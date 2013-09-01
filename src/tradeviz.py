@@ -25,7 +25,7 @@ import re
 import os
 from math import sqrt
 
-provinceBMP = 'worldmap.gif'
+provinceBMP = r'../res/worldmap.gif'
 EU4RegKey = "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 236850"
 
 class TradeViz:
@@ -34,7 +34,7 @@ class TradeViz:
         self.paneHeight = 100
         self.w, self.h = self.root.winfo_screenwidth() - 15, self.root.winfo_screenheight() - self.paneHeight
         self.root.title("EU4 Trade Visualizer")
-        self.root.iconbitmap('merchant.ico')
+        self.root.iconbitmap(r'../res/merchant.ico')
 
         img = Image.open(provinceBMP)
         self.mapWidth = img.size[0]
@@ -55,8 +55,8 @@ class TradeViz:
 
     def getConfig(self):
 
-        if os.path.exists("tradeviz.cfg"):
-            with open('tradeviz.cfg') as f:
+        if os.path.exists(r"../tradeviz.cfg"):
+            with open(r'../tradeviz.cfg') as f:
                 self.config = json.load(f)
             if "savefile" in self.config:
                 self.saveEntry.insert(0, self.config["savefile"])
@@ -120,7 +120,7 @@ class TradeViz:
 
         filename = tkFileDialog.askopenfilename(filetypes=[("EU4 Saves", "*.eu4")], initialdir=initialDir)
         self.config["savefile"] = filename
-        with open('tradeviz.cfg', 'w') as f:
+        with open(r'../tradeviz.cfg', 'w') as f:
             json.dump(self.config, f)
 
         self.saveEntry.delete(0, tk.END)
@@ -135,11 +135,11 @@ class TradeViz:
     def toggleShowZeroes(self, event=None):
         self.config["showZeroRoutes"] = self.showZeroVar.get()
         self.drawMap()
-        with open('tradeviz.cfg', 'w') as f:
+        with open(r'../tradeviz.cfg', 'w') as f:
             json.dump(self.config, f)
 
     def exit(self, event=None):
-        with open('tradeviz.cfg', 'w') as f:
+        with open(r'../tradeviz.cfg', 'w') as f:
             json.dump(self.config, f)
         self.root.quit()
 
@@ -159,9 +159,6 @@ class TradeViz:
         r = {}
 
         print 'Done in %.3f seconds' % (time.time() - t0)
-
-#         with open('tradeout.txt', 'w') as f:
-#             f.write(str(result))
 
         self.maxIncoming = 0
         self.maxCurrent = 0
