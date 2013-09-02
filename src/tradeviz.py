@@ -6,29 +6,35 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 '''
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 
 # TODO: 'Nodes show' option: current value, local value, total trade power
-# TODO: arrows ending at the edge of node circles
 # TODO: Show countries option: ALL, specific tag
 # TODO: better support for lower resolutions? (1280x720)
+# TODO: Use stdlib logging module in order to help solving bug reports
+# TODO: support for mods that change the map and/or trade network
 
 from TradeGrammar import tradeSection
 
+# GUI stuff
 import Tkinter as tk
 import tkFileDialog
 import tkMessageBox
 from PIL import Image, ImageTk
 
+# standardlib stuff
 import time
 import re
 import os
 import sys
 import json
-from math import sqrt, degrees, atan2
+from math import sqrt
 
+# globals
 provinceBMP = r'../res/worldmap.gif'
-EU4RegKey = "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 236850"
+WinRegKey = "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 236850"
+MacDefaultPath = os.path.expanduser("~/Library/Application Support/Steam/Steamapps/common/Europa Universalis IV")
+LinuxDefaultPath = os.path.expanduser("~/Steam/Steamapps/common/Europa Universalis IV")
 
 class TradeViz:
     """Main class for Europa Universalis Trade Visualizer"""
@@ -88,7 +94,7 @@ class TradeViz:
 
         if sys.platform == "win32":
             import _winreg
-            key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, EU4RegKey)
+            key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, WinRegKey)
             try:
                 i = 0
                 while 1:
@@ -101,11 +107,14 @@ class TradeViz:
             except WindowsError as e:
                 print e
 
-        else:  # other platforms
-            # TODO: Default path reported by Mac user, figure out if path is the same on Linux
-            macpath = os.path.expanduser("~/Library/Application Support/Steam/Steamapps/common/Europa Universalis IV")
-            if os.path.exists(macpath):
-                self.config["installDir"] = macpath
+        elif sys.platform == "darwin":  # OS X
+
+            if os.path.exists(MacDefaultPath):
+                self.config["installDir"] = MacDefaultPath
+
+        else:  # Assume it's Linux
+            if os.path.exists(LinuxDefaultPath):
+                self.config["installDir"] = LinuxDefaultPath
 
         if not 'installDir' in self.config or not os.path.exists(self.config["installDir"]):
             if not os.path.exists(self.config["installDir"]):
@@ -115,8 +124,8 @@ class TradeViz:
                 msg = "Europa Universalis 4 installation could not be found!"
 
             tkMessageBox.showerror("Error", msg + " Please select your installation folder manually.")
-            folder = tkFileDialog.askdirectory(initialdir="C:")
-            if os.path.exists(os.path.join(folder, "eu4.exe")) or os.path.exists(os.path.join(folder, "eu4.app")):
+            folder = tkFileDialog.askdirectory(initialdir="/")
+            if os.path.exists(os.path.join(folder, "common")):
                 self.config["installDir"] = folder
 
     def setupGUI(self):
@@ -380,6 +389,8 @@ class TradeViz:
             self.canvas.create_text(centerOfLine, text=int(value), fill='white')
 
     def drawMap(self):
+        """Top level method for redrawing the world map and trade network"""
+
         self.root.geometry("%dx%d+0+0" % (self.w, self.mapThumbSize[1] + self.paneHeight))
         self.root.minsize(self.w, self.mapThumbSize[1] + self.paneHeight)
         self.root.maxsize(self.w, self.mapThumbSize[1] + self.paneHeight)
@@ -411,6 +422,8 @@ class TradeViz:
             self.canvas.create_text((x * ratio, y * ratio), text=int(data['currentValue']), fill='white')
 
     def pacificTrade(self, x, y , x2, y2):
+        """Check whether a line goes around the east/west edge of the map"""
+
         directDist = sqrt(abs(x - x2) ** 2 + abs(y - y2) ** 2)
         xDistAcross = self.mapWidth - abs(x - x2)
         distAcross = sqrt(xDistAcross ** 2 + abs(y - y2) ** 2)

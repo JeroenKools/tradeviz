@@ -1,4 +1,4 @@
-from pyparsing import ZeroOrMore, OneOrMore, Optional, Literal, Word, alphas, nums, Group, Dict
+from pyparsing import ZeroOrMore, OneOrMore, Optional, Literal, Word, alphas, nums
 
 '''
 Created on 31 aug. 2013
@@ -15,7 +15,7 @@ begin = Literal("{").suppress()
 stop = Literal("}").suppress()
 quote = Literal('"').suppress()
 
-name = quote + Word(alphas + "_") + quote
+name = quote + Word(alphas, alphas + nums + "_") + quote
 yesno = Literal("yes") | Literal("no")
 flt = Word(nums + ".-").setParseAction(lambda s, l, t: float(t[0]))
 integer = Word(nums).setParseAction((lambda s, l, t: int(t[0])))
