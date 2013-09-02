@@ -6,7 +6,7 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 '''
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 # TODO: 'Nodes show' option: current value, local value, total trade power
 # TODO: arrows ending at the edge of node circles
