@@ -1,0 +1,9 @@
+/tradeviz.cfg
+*.pyc
+/make.bat
+/dist/*.toc
+/dist/*.pkg
+/dist/*.pyz
+/dist/*.manifest
+/tradeviz.spec
+/*.log

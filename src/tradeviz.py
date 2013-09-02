@@ -6,6 +6,8 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 '''
 
+VERSION = "1.0.0"
+
 # TODO: 'Nodes show' option: current value, local value, total trade power
 # TODO: arrows ending at the edge of node circles
 # TODO: Show countries option: ALL, specific tag
@@ -33,7 +35,7 @@ class TradeViz:
         self.root = tk.Tk()
         self.paneHeight = 100
         self.w, self.h = self.root.winfo_screenwidth() - 15, self.root.winfo_screenheight() - self.paneHeight
-        self.root.title("EU4 Trade Visualizer")
+        self.root.title("EU4 Trade Visualizer v%s" % VERSION)
         self.root.iconbitmap(r'../res/merchant.ico')
 
         img = Image.open(provinceBMP)
@@ -83,11 +85,17 @@ class TradeViz:
                     break
                 i += 1
 
-        except WindowsError:
-            pass
+        except WindowsError as e:
+            print e
 
         if not 'installDir' in self.config or not os.path.exists(self.config["installDir"]):
-            tkMessageBox.showerror("Error", "Europa Universalis installation could not be found! Please select your installation folder manually.")
+            if not os.path.exists(self.config["installDir"]):
+                msg = "Europa Universalis install location found in Windows registry but location is invalid."
+
+            else:
+                msg = "Europa Universalis 4 installation could not be found!"
+
+            tkMessageBox.showerror("Error", msg + " Please select your installation folder manually.")
             folder = tkFileDialog.askdirectory(initialdir="C:")
             if os.path.exists(os.path.join(folder, "eu4.exe")):
                 self.config["installDir"] = folder
