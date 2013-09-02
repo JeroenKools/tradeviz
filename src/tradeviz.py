@@ -6,7 +6,7 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 '''
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 # TODO: 'Nodes show' option: current value, local value, total trade power
 # TODO: arrows ending at the edge of node circles
@@ -19,18 +19,19 @@ import Tkinter as tk
 import tkFileDialog
 import tkMessageBox
 from PIL import Image, ImageTk
-import json
-import _winreg
 
 import time
 import re
 import os
-from math import sqrt
+import sys
+import json
+from math import sqrt, degrees, atan2
 
 provinceBMP = r'../res/worldmap.gif'
 EU4RegKey = "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 236850"
 
 class TradeViz:
+    """Main class for Europa Universalis Trade Visualizer"""
     def __init__(self):
         self.root = tk.Tk()
         self.paneHeight = 100
@@ -42,6 +43,7 @@ class TradeViz:
         self.mapWidth = img.size[0]
         img.thumbnail((self.w, self.h), Image.BICUBIC)
         self.mapThumbSize = img.size
+        self.ratio = self.mapThumbSize[0] / float(self.mapWidth)
         self.provinceImage = ImageTk.PhotoImage(img)
 
         self.setupGUI()
@@ -56,6 +58,7 @@ class TradeViz:
         self.root.mainloop()
 
     def getConfig(self):
+        """Retrieve settings from config file"""
 
         if os.path.exists(r"../tradeviz.cfg"):
             with open(r'../tradeviz.cfg') as f:
@@ -74,19 +77,35 @@ class TradeViz:
         self.tradenodesfile = os.path.join(self.config["installDir"], r"common\tradenodes\00_tradenodes.txt")
         self.locationsfile = os.path.join(self.config["installDir"], r"map\positions.txt")
 
-    def getInstallDir(self):
-        key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, EU4RegKey)
-        try:
-            i = 0
-            while 1:
-                name, val, typ = _winreg.EnumValue(key, i)
-                if name == "InstallLocation":
-                    self.config["installDir"] = val
-                    break
-                i += 1
+    def saveConfig(self):
+        """Store settings in config file"""
 
-        except WindowsError as e:
-            print e
+        with open(r'../tradeviz.cfg', 'w') as f:
+            json.dump(self.config, f)
+
+    def getInstallDir(self):
+        """Find the EU4 install path and store it in the config for later use"""
+
+        if sys.platform == "win32":
+            import _winreg
+            key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, EU4RegKey)
+            try:
+                i = 0
+                while 1:
+                    name, val, typ = _winreg.EnumValue(key, i)
+                    if name == "InstallLocation":
+                        self.config["installDir"] = val
+                        break
+                    i += 1
+
+            except WindowsError as e:
+                print e
+
+        else:  # other platforms
+            # TODO: Default path reported by Mac user, figure out if path is the same on Linux
+            macpath = os.path.expanduser("~/Library/Application Support/Steam/Steamapps/common/Europa Universalis IV")
+            if os.path.exists(macpath):
+                self.config["installDir"] = macpath
 
         if not 'installDir' in self.config or not os.path.exists(self.config["installDir"]):
             if not os.path.exists(self.config["installDir"]):
@@ -97,10 +116,12 @@ class TradeViz:
 
             tkMessageBox.showerror("Error", msg + " Please select your installation folder manually.")
             folder = tkFileDialog.askdirectory(initialdir="C:")
-            if os.path.exists(os.path.join(folder, "eu4.exe")):
+            if os.path.exists(os.path.join(folder, "eu4.exe")) or os.path.exists(os.path.join(folder, "eu4.app")):
                 self.config["installDir"] = folder
 
     def setupGUI(self):
+        """Initialize the user interface elements"""
+
         self.canvas = tk.Canvas(self.root, width=self.mapThumbSize[0], height=self.mapThumbSize[1])
         self.canvas.grid(row=0, column=0, columnspan=3, sticky=tk.W)
 
@@ -122,36 +143,45 @@ class TradeViz:
         self.showZeroes.grid(row=2, column=0, columnspan=2, sticky=tk.W, padx=6, pady=2)
 
     def browse(self, event=None):
+        """Let the user browse for an EU4 save file to be used by the program"""
+
         initialDir = '.'
         if "savefile" in self.config:
             initialDir = os.path.dirname(self.config["savefile"])
 
         filename = tkFileDialog.askopenfilename(filetypes=[("EU4 Saves", "*.eu4")], initialdir=initialDir)
         self.config["savefile"] = filename
-        with open(r'../tradeviz.cfg', 'w') as f:
-            json.dump(self.config, f)
+        self.saveConfig()
 
         self.saveEntry.delete(0, tk.END)
         self.saveEntry.insert(0, self.config["savefile"])
 
     def go(self, event=None):
+        """Start parsing the selected save file and show the results on the map"""
+
         if self.config["savefile"]:
             self.getTradeData(self.config["savefile"])
             self.getNodeData()
             self.drawMap()
 
     def toggleShowZeroes(self, event=None):
+        """Turn the display of trade routes with a value of zero on or off"""
+
         self.config["showZeroRoutes"] = self.showZeroVar.get()
+        self.root.update()
         self.drawMap()
-        with open(r'../tradeviz.cfg', 'w') as f:
-            json.dump(self.config, f)
+        self.saveConfig()
+
 
     def exit(self, event=None):
-        with open(r'../tradeviz.cfg', 'w') as f:
-            json.dump(self.config, f)
+        """Close the program"""
+
+        self.saveConfig()
         self.root.quit()
 
     def getTradeData(self, savepath):
+        """Extract the trade data from the selected save file"""
+
         self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2), text="Please wait... Save file is being processed...", fill="white")
         self.root.update()
         with open(savepath) as f:
@@ -208,7 +238,9 @@ class TradeViz:
                 return loc[1:]
 
     def getNodeData(self):
-        # get all tradenode provinceIDs
+        """Retrieve trade node and province information from the game files"""
+
+        # Get all tradenode provinceIDs
         with open(self.tradenodesfile, 'r') as f:
             txt = f.read()
             tradenodes = re.findall(r"(\w+)=\s*{\s*location=(\d+)", txt)
@@ -220,7 +252,7 @@ class TradeViz:
         self.tradenodes = tradenodes
         assert tradenodes[0] == ('california', 871)
 
-        # get all province locations
+        # Get all province locations
         with open(self.locationsfile, 'r') as f:
             txt = f.read()
             locations = re.findall(r"(\d+)=\s*{\s*position=\s*{\s*([\d\.]*)\s*([\d\.]*)", txt)
@@ -233,79 +265,146 @@ class TradeViz:
         self.provinceLocations = locations
         assert locations[0] == (1, 3085.0, 325.0)
 
-    def drawMap(self):
+    def getNodeRadius(self, value):
+        """Calculate the radius for a trade node given its value"""
 
-        ratio = self.mapThumbSize[0] / float(self.mapWidth)
+        return 5 + int(7 * value / self.maxCurrent)
+
+    def intersectsNode(self, node1, node2):
+        """Check whether a trade route intersects a trade node circle (other than source and target nodes)
+        See http://mathworld.wolfram.com/Circle-LineIntersection.html
+        """
+
+        for n, node3 in enumerate(self.tradenodes):
+            nx, ny = self.getNodeLocation(n + 1)
+            data = self.nodeData[node3[0]]
+            r = self.getNodeRadius(data['currentValue']) / self.ratio
+
+            # assume circle center is at 0,0
+            x2, y2 = self.getNodeLocation(node1)
+            x1, y1 = self.getNodeLocation(node2)
+            x1 -= nx
+            y1 -= ny
+            x2 -= nx
+            y2 -= ny
+
+            if (x1, y1) == (0, 0) or (x2, y2) == (0, 0):
+                continue
+
+            D = x1 * y2 - x2 * y1
+            dx = x2 - x1
+            dy = y2 - y1
+            dr = sqrt(dx ** 2 + dy ** 2)
+            det = r ** 2 * dr ** 2 - D ** 2
+
+            if det > 0:
+                # infinite line intersects, check whether the center node is inside the rectangle defined by the other nodes
+                if min(x1, x2) < 0 and max(x1, x2) > 0 and min(y1, y2) < 0 and max(y1, y2) > 0:
+                    # print "%s is intersected by a trade route between %s and %s" % (self.getNodeName(n + 1), self.getNodeName(node1), self.getNodeName(node2))
+                    return True
+
+    def drawArrow(self, fromNode, toNode, value, toRadius):
+        """Draw an arrow between two nodes on the map"""
+
+        x2, y2 = self.getNodeLocation(fromNode)
+        x, y = self.getNodeLocation(toNode)
+
+        # adjust for target node radius
+        dx = x - x2
+        if self.pacificTrade(x, y, x2, y2):
+            if x > x2:
+                dx = x2 - self.mapWidth - x
+            else:
+                dx = self.mapWidth - x + x2
+        dy = y - y2
+        l = sqrt(dx ** 2 + dy ** 2)
+        radiusFraction = toRadius / l
+        x -= radiusFraction * 3 * dx
+        y -= radiusFraction * 3 * dy
+
+        ratio = self.ratio
+        lineWidth = int(10 * value / self.maxIncoming)
+        arrowShape = (max(8, lineWidth * 2), max(10, lineWidth * 2.5), max(5, lineWidth))
+
+        if value > 0:
+            linecolor = 'black'
+        else:
+            if self.showZeroVar.get() == 0:
+                return
+            linecolor = 'yellow'
+
+        if not self.pacificTrade(x, y, x2, y2):
+
+            centerOfLine = ((x + x2) / 2 * ratio, (y + y2) / 2 * ratio)
+
+            if self.intersectsNode(fromNode, toNode):
+                d = 20
+                centerOfLine = (centerOfLine[0] + d, centerOfLine[1] + d)
+                self.canvas.create_line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
+                        width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
+                self.canvas.create_line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
+                        width=lineWidth, fill=linecolor)
+
+            else:
+                self.canvas.create_line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                        width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
+
+            self.canvas.create_text(centerOfLine, text=int(round(value)), fill='white')
+
+        else:  # Trade route crosses edge of map
+
+            if x < x2:  # Asia to America
+                self.canvas.create_line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
+                                    width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
+                self.canvas.create_line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                                    width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
+
+                # fraction of trade route left of "date line"
+                f = abs(self.mapWidth - float(x2)) / (self.mapWidth - abs(x - x2))
+                # y coordinate where trade route crosses date line
+                yf = y2 + f * (y - y2)
+
+                centerOfLine = (x / 2 * ratio, (yf + y) / 2 * ratio)
+
+            else:  # Americas to Asia
+                self.canvas.create_line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
+                                    width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
+                self.canvas.create_line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                                    width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
+
+                f = abs(self.mapWidth - float(x)) / (self.mapWidth - abs(x - x2))
+                yf = y + f * (y2 - y)
+
+                centerOfLine = ((self.mapWidth + x) / 2 * ratio, (yf + y) / 2 * ratio)
+
+            self.canvas.create_text(centerOfLine, text=int(value), fill='white')
+
+    def drawMap(self):
         self.root.geometry("%dx%d+0+0" % (self.w, self.mapThumbSize[1] + self.paneHeight))
         self.root.minsize(self.w, self.mapThumbSize[1] + self.paneHeight)
         self.root.maxsize(self.w, self.mapThumbSize[1] + self.paneHeight)
         self.canvas.create_image((0, 0), image=self.provinceImage, anchor=tk.NW)
+        ratio = self.ratio
 
         # draw incoming trade arrows
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
 
             data = self.nodeData[node[0]]
-            # print n + 1, node, data
 
             if 'incomingValue' in data:
                 for i in range(len(data['incomingValue'])):
-                    node2 = data['incomingFromNode'][i]
-                    x2, y2 = self.getNodeLocation(node2)
+                    fromNodeNr = data['incomingFromNode'][i]
 
-                    lineWidth = int(10 * data['incomingValue'][i] / self.maxIncoming)
-                    arrowShape = (max(10, lineWidth * 2), max(12, lineWidth * 2.5), max(5, lineWidth))
-
-                    if data['incomingValue'][i] > 0:
-                        linecolor = 'black'
-                    else:
-                        if self.showZeroVar.get() == 0:
-                            continue
-                        linecolor = 'yellow'
-
-                    if not self.pacificTrade(x, y, x2, y2):
-
-                        self.canvas.create_line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                                width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
-
-                        centerOfLine = ((x + x2) / 2 * ratio, (y + y2) / 2 * ratio)
-
-                        self.canvas.create_text(centerOfLine, text=int(round(data['incomingValue'][i])), fill='white')
-
-                    else:  # trade route crosses edge of map
-
-                        if x < x2:  # Asia to America
-                            self.canvas.create_line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
-                                                width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
-                            self.canvas.create_line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                                                width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
-
-                            # fraction of trade route left of "date line"
-                            f = abs(self.mapWidth - float(x2)) / (self.mapWidth - abs(x - x2))
-                            # y coordinate where trade route crosses date line
-                            yf = y2 + f * (y - y2)
-
-                            centerOfLine = (x / 2 * ratio, (yf + y) / 2 * ratio)
-
-                        else:  # Americas to Asia
-                            self.canvas.create_line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
-                                                width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
-                            self.canvas.create_line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                                                width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
-
-                            f = abs(self.mapWidth - float(x)) / (self.mapWidth - abs(x - x2))
-                            yf = y + f * (y2 - y)
-
-                            centerOfLine = ((self.mapWidth + x) / 2 * ratio, (yf + y) / 2 * ratio)
-
-                        self.canvas.create_text(centerOfLine, text=int(data['incomingValue'][i]), fill='white')
+                    value = data['incomingValue'][i]
+                    self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data['currentValue']))
 
         # draw trade nodes and their current value
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
 
             data = self.nodeData[node[0]]
-            s = 5 + int(7 * data['currentValue'] / self.maxCurrent)
+            s = self.getNodeRadius(data['currentValue'])
 
             self.canvas.create_oval((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s), outline="red",
                                     fill="red")

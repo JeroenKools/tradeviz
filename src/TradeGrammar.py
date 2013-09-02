@@ -3,7 +3,9 @@ from pyparsing import ZeroOrMore, OneOrMore, Optional, Literal, Word, alphas, nu
 '''
 Created on 31 aug. 2013
 
-@author: Jeroen
+Pyparsing grammar describing the trade section of EU4 save files
+
+@author: Jeroen Kools
 '''
 
 
