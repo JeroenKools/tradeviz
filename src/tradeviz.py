@@ -1,28 +1,24 @@
-'''
+"""
 Trade Visualizer for EU4
 
 Created on 21 aug. 2013
 
 @author: Jeroen Kools
-'''
+"""
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
-# TODO: 'Nodes show' option: current value, local value, total trade power
+# TODO: "Nodes show" option: current value, local value, total trade power
 # TODO: Show countries option: ALL, specific tag
 # TODO: better support for lower resolutions? (1280x720)
-# TODO: Use stdlib logging module in order to help solving bug reports
 # TODO: support for mods that change the map and/or trade network
 
-from TradeGrammar import tradeSection
-
-# GUI stuff
-import Tkinter as tk
-import tkFileDialog
-import tkMessageBox
-from PIL import Image, ImageTk
+# DEPENDENDIES:
+# PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
+# Python Imaging Library: http://www.pythonware.com/products/pil/
 
 # standardlib stuff
+import logging
 import time
 import re
 import os
@@ -30,67 +26,93 @@ import sys
 import json
 from math import sqrt
 
+# GUI stuff
+import Tkinter as tk
+import tkFileDialog
+import tkMessageBox
+from PIL import Image, ImageTk
+
+# Tradeviz components
+from TradeGrammar import tradeSection
+
 # globals
-provinceBMP = r'../res/worldmap.gif'
-WinRegKey = "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 236850"
+provinceBMP = "../res/worldmap.gif"
+WinRegKey = "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 236850"  # Win64 only...
 MacDefaultPath = os.path.expanduser("~/Library/Application Support/Steam/Steamapps/common/Europa Universalis IV")
 LinuxDefaultPath = os.path.expanduser("~/Steam/Steamapps/common/Europa Universalis IV")
 
 class TradeViz:
     """Main class for Europa Universalis Trade Visualizer"""
     def __init__(self):
+        logging.debug("Initializing application")
         self.root = tk.Tk()
         self.paneHeight = 100
         self.w, self.h = self.root.winfo_screenwidth() - 15, self.root.winfo_screenheight() - self.paneHeight
         self.root.title("EU4 Trade Visualizer v%s" % VERSION)
-        self.root.iconbitmap(r'../res/merchant.ico')
 
-        img = Image.open(provinceBMP)
-        self.mapWidth = img.size[0]
-        img.thumbnail((self.w, self.h), Image.BICUBIC)
-        self.mapThumbSize = img.size
-        self.ratio = self.mapThumbSize[0] / float(self.mapWidth)
-        self.provinceImage = ImageTk.PhotoImage(img)
+        try:
+            self.root.iconbitmap(r"../res/merchant.ico")
+        except Exception as e:
+            logging.error("Error setting application icon: %s" % e)
 
+        try:
+            img = Image.open(provinceBMP)
+            self.mapWidth = img.size[0]
+            self.mapHeight = img.size[1]
+            img.thumbnail((self.w, self.h), Image.BICUBIC)
+            self.mapThumbSize = img.size
+            self.ratio = self.mapThumbSize[0] / float(self.mapWidth)
+            self.provinceImage = ImageTk.PhotoImage(img)
+        except Exception as e:
+            logging.critical("Error preparing the world map!\n%s" % e)
+
+        logging.debug("Setting up GUI")
         self.setupGUI()
-
         self.tradenodes = []
         self.drawMap()
         self.root.grid_columnconfigure(1, weight=1)
-
         self.getConfig()
 
         self.root.focus_set()
+        logging.debug("Entering main loop")
         self.root.mainloop()
 
     def getConfig(self):
         """Retrieve settings from config file"""
 
+        logging.debug("Getting config")
+
         if os.path.exists(r"../tradeviz.cfg"):
-            with open(r'../tradeviz.cfg') as f:
+            with open(r"../tradeviz.cfg") as f:
                 self.config = json.load(f)
             if "savefile" in self.config:
                 self.saveEntry.insert(0, self.config["savefile"])
-            if 'showZeroRoutes' in self.config:
+            if "showZeroRoutes" in self.config:
                 self.showZeroVar.set(self.config["showZeroRoutes"])
 
         else:
             self.config = {"savefile": "", "showZeroRoutes": 0}
 
-        if not 'installDir' in self.config or not os.path.exists(self.config["installDir"]):
+        if not "installDir" in self.config or not os.path.exists(self.config["installDir"]):
             self.getInstallDir()
 
         self.tradenodesfile = os.path.join(self.config["installDir"], r"common\tradenodes\00_tradenodes.txt")
         self.locationsfile = os.path.join(self.config["installDir"], r"map\positions.txt")
 
+        self.saveConfig()
+
     def saveConfig(self):
         """Store settings in config file"""
 
-        with open(r'../tradeviz.cfg', 'w') as f:
+        logging.debug("Saving config")
+
+        with open(r"../tradeviz.cfg", "w") as f:
             json.dump(self.config, f)
 
     def getInstallDir(self):
         """Find the EU4 install path and store it in the config for later use"""
+
+        logging.debug("Getting install dir")
 
         if sys.platform == "win32":
             import _winreg
@@ -98,14 +120,14 @@ class TradeViz:
                 key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, WinRegKey)
                 i = 0
                 while 1:
-                    name, val, typ = _winreg.EnumValue(key, i)
+                    name, val, _type = _winreg.EnumValue(key, i)
                     if name == "InstallLocation":
                         self.config["installDir"] = val
                         break
                     i += 1
 
-            except WindowsError as e:
-                print e
+            except WindowsError:
+                pass
 
         elif sys.platform == "darwin":  # OS X
 
@@ -115,18 +137,14 @@ class TradeViz:
         else:  # Assume it's Linux
             if os.path.exists(LinuxDefaultPath):
                 self.config["installDir"] = LinuxDefaultPath
-                
-        if not 'installDir' in self.config:
+
+        if not "installDir" in self.config:
             self.config["installDir"] = ""
 
         if self.config["installDir"] == "" or not os.path.exists(self.config["installDir"]):
-            if self.config["installDir"] == "":
-                msg = "Europa Universalis 4 installation could not be found!"
-
-            else:
-                msg = "Europa Universalis default install location exists but is invalid."
-
-            tkMessageBox.showerror("Error", msg + " Please select your installation folder manually.")
+            tkMessageBox.showerror("Error", "Europa Universalis 4 installation could not be found! " +
+                                   "The program needs to read some files from the game to work correctly. " +
+                                   "Please select your installation folder manually.")
             folder = tkFileDialog.askdirectory(initialdir="/")
             if os.path.exists(os.path.join(folder, "common")):
                 self.config["installDir"] = folder
@@ -157,11 +175,14 @@ class TradeViz:
     def browse(self, event=None):
         """Let the user browse for an EU4 save file to be used by the program"""
 
-        initialDir = '.'
+        logging.debug("Browsing for save file")
+
+        initialDir = "."
         if "savefile" in self.config:
             initialDir = os.path.dirname(self.config["savefile"])
 
         filename = tkFileDialog.askopenfilename(filetypes=[("EU4 Saves", "*.eu4")], initialdir=initialDir)
+        logging.info("Selected save file %s" % os.path.basename(filename))
         self.config["savefile"] = filename
         self.saveConfig()
 
@@ -171,6 +192,8 @@ class TradeViz:
     def go(self, event=None):
         """Start parsing the selected save file and show the results on the map"""
 
+        logging.info("Processing save file")
+
         if self.config["savefile"]:
             self.getTradeData(self.config["savefile"])
             self.getNodeData()
@@ -178,6 +201,8 @@ class TradeViz:
 
     def toggleShowZeroes(self, event=None):
         """Turn the display of trade routes with a value of zero on or off"""
+
+        logging.debug("Show zeroes toggled")
 
         self.config["showZeroRoutes"] = self.showZeroVar.get()
         self.root.update()
@@ -188,38 +213,47 @@ class TradeViz:
     def exit(self, event=None):
         """Close the program"""
 
+        logging.shutdown()
         self.saveConfig()
+        self.root.update()
+        logging.info("Exiting...")
         self.root.quit()
 
     def getTradeData(self, savepath):
         """Extract the trade data from the selected save file"""
 
+        logging.debug("Getting trade data")
+
         self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2), text="Please wait... Save file is being processed...", fill="white")
         self.root.update()
+        logging.debug("Reading save file")
         with open(savepath) as f:
             txt = f.read()
             txt = txt.split("trade=")[1]
             txt = txt.split("production_leader=")[0]
 
-        print "Parsing %i chars..." % len(txt)
+        logging.info("Parsing %i chars" % len(txt))
         t0 = time.time()
 
+        logging.debug("Parsing trade section...")
         result = tradeSection.parseString(txt)
         d = result.asDict()
         r = {}
 
-        print 'Done in %.3f seconds' % (time.time() - t0)
+        self.info("Done in %.3f seconds" % (time.time() - t0))
 
         self.maxIncoming = 0
         self.maxCurrent = 0
 
-        for n in d['Nodes']:
+        logging.debug("Processing parsed results")
+
+        for n in d["Nodes"]:
             d = n.asDict()
             node = {}
             for k in d:
-                if k not in ["name" , 'incomingFromNode', 'incomingValue']:
+                if k not in ["name" , "incomingFromNode", "incomingValue"]:
                     node[k] = d[k]
-                elif k in ['incomingFromNode', 'incomingValue']:
+                elif k in ["incomingFromNode", "incomingValue"]:
                     node[k] = d[k].asList()
 
                 if k == "currentValue":
@@ -229,11 +263,12 @@ class TradeViz:
 
             r[d["name"][0]] = node
 
-#         print "Seville:\n\t", r["sevilla"]
-#         print "----"
-#         print "max current value:", self.maxCurrent
-#         print "max incoming value:", self.maxIncoming
-#         print '----'
+        try:
+            logging.debug("Seville:\n\t%s" % r["sevilla"])
+            logging.debug("max current value: %s" % self.maxCurrent)
+            logging.debug("max incoming value: %s" % self.maxIncoming)
+        except KeyError:
+            logging.warn("Trade node Seville not found! Save file is either from a modded game or malformed!")
 
         self.nodeData = r
 
@@ -252,27 +287,35 @@ class TradeViz:
     def getNodeData(self):
         """Retrieve trade node and province information from the game files"""
 
+        logging.debug("Getting node data")
+
         # Get all tradenode provinceIDs
-        with open(self.tradenodesfile, 'r') as f:
-            txt = f.read()
-            tradenodes = re.findall(r"(\w+)=\s*{\s*location=(\d+)", txt)
+        try:
+            with open(self.tradenodesfile, "r") as f:
+                txt = f.read()
+                tradenodes = re.findall(r"(\w+)=\s*{\s*location=(\d+)", txt)
+        except IOError as e:
+            logging.critical("Could not find trade nodes file: %s" % e)
 
         for i in range(len(tradenodes)):
             a, b = tradenodes[i]
             tradenodes[i] = (a, int(b))
 
         self.tradenodes = tradenodes
-        assert tradenodes[0] == ('california', 871)
+        assert tradenodes[0] == ("california", 871)
 
         # Get all province locations
-        with open(self.locationsfile, 'r') as f:
-            txt = f.read()
-            locations = re.findall(r"(\d+)=\s*{\s*position=\s*{\s*([\d\.]*)\s*([\d\.]*)", txt)
+        try:
+            with open(self.locationsfile, "r") as f:
+                txt = f.read()
+                locations = re.findall(r"(\d+)=\s*{\s*position=\s*{\s*([\d\.]*)\s*([\d\.]*)", txt)
+        except IOError as e:
+            logging.critical("Could not find locations file: %s" % e)
 
         for i in range(len(locations)):
             a, b, c = locations[i]
 
-            locations[i] = (int(a), float(b), 2048 - float(c))
+            locations[i] = (int(a), float(b), self.mapHeight - float(c))  # invert y coordinate :)
 
         self.provinceLocations = locations
         assert locations[0] == (1, 3085.0, 325.0)
@@ -290,7 +333,7 @@ class TradeViz:
         for n, node3 in enumerate(self.tradenodes):
             nx, ny = self.getNodeLocation(n + 1)
             data = self.nodeData[node3[0]]
-            r = self.getNodeRadius(data['currentValue']) / self.ratio
+            r = self.getNodeRadius(data["currentValue"]) / self.ratio
 
             # assume circle center is at 0,0
             x2, y2 = self.getNodeLocation(node1)
@@ -312,7 +355,7 @@ class TradeViz:
             if det > 0:
                 # infinite line intersects, check whether the center node is inside the rectangle defined by the other nodes
                 if min(x1, x2) < 0 and max(x1, x2) > 0 and min(y1, y2) < 0 and max(y1, y2) > 0:
-                    # print "%s is intersected by a trade route between %s and %s" % (self.getNodeName(n + 1), self.getNodeName(node1), self.getNodeName(node2))
+                    logging.debug("%s is intersected by a trade route between %s and %s" % (self.getNodeName(n + 1), self.getNodeName(node1), self.getNodeName(node2)))
                     return True
 
     def drawArrow(self, fromNode, toNode, value, toRadius):
@@ -339,11 +382,11 @@ class TradeViz:
         arrowShape = (max(8, lineWidth * 2), max(10, lineWidth * 2.5), max(5, lineWidth))
 
         if value > 0:
-            linecolor = 'black'
+            linecolor = "black"
         else:
             if self.showZeroVar.get() == 0:
                 return
-            linecolor = 'yellow'
+            linecolor = "yellow"
 
         if not self.pacificTrade(x, y, x2, y2):
 
@@ -361,7 +404,7 @@ class TradeViz:
                 self.canvas.create_line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
                         width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
 
-            self.canvas.create_text(centerOfLine, text=int(round(value)), fill='white')
+            self.canvas.create_text(centerOfLine, text=int(round(value)), fill="white")
 
         else:  # Trade route crosses edge of map
 
@@ -389,7 +432,7 @@ class TradeViz:
 
                 centerOfLine = ((self.mapWidth + x) / 2 * ratio, (yf + y) / 2 * ratio)
 
-            self.canvas.create_text(centerOfLine, text=int(value), fill='white')
+            self.canvas.create_text(centerOfLine, text=int(value), fill="white")
 
     def drawMap(self):
         """Top level method for redrawing the world map and trade network"""
@@ -406,23 +449,23 @@ class TradeViz:
 
             data = self.nodeData[node[0]]
 
-            if 'incomingValue' in data:
-                for i in range(len(data['incomingValue'])):
-                    fromNodeNr = data['incomingFromNode'][i]
+            if "incomingValue" in data:
+                for i in range(len(data["incomingValue"])):
+                    fromNodeNr = data["incomingFromNode"][i]
 
-                    value = data['incomingValue'][i]
-                    self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data['currentValue']))
+                    value = data["incomingValue"][i]
+                    self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data["currentValue"]))
 
         # draw trade nodes and their current value
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
 
             data = self.nodeData[node[0]]
-            s = self.getNodeRadius(data['currentValue'])
+            s = self.getNodeRadius(data["currentValue"])
 
             self.canvas.create_oval((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s), outline="red",
                                     fill="red")
-            self.canvas.create_text((x * ratio, y * ratio), text=int(data['currentValue']), fill='white')
+            self.canvas.create_text((x * ratio, y * ratio), text=int(data["currentValue"]), fill="white")
 
     def pacificTrade(self, x, y , x2, y2):
         """Check whether a line goes around the east/west edge of the map"""
@@ -434,5 +477,13 @@ class TradeViz:
         return (distAcross < directDist)
 
 if __name__ == "__main__":
+
+    debuglevel = logging.DEBUG
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        if arg in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+            debuglevel = eval("logging." + arg)
+
+    logging.basicConfig(filename="tradeviz.log", filemode="w", level=debuglevel, format='%(levelname)s: %(message)s')
 
     tv = TradeViz()

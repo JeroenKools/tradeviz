@@ -7,3 +7,5 @@
 /dist/*.manifest
 /tradeviz.spec
 /*.log
+/src/*.log
+/dist/bin/*.log
