@@ -94,8 +94,8 @@ class TradeViz:
 
         if sys.platform == "win32":
             import _winreg
-            key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, WinRegKey)
             try:
+                key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, WinRegKey)
                 i = 0
                 while 1:
                     name, val, typ = _winreg.EnumValue(key, i)
@@ -115,13 +115,16 @@ class TradeViz:
         else:  # Assume it's Linux
             if os.path.exists(LinuxDefaultPath):
                 self.config["installDir"] = LinuxDefaultPath
+                
+        if not 'installDir' in self.config:
+            self.config["installDir"] = ""
 
-        if not 'installDir' in self.config or not os.path.exists(self.config["installDir"]):
-            if not os.path.exists(self.config["installDir"]):
-                msg = "Europa Universalis install location found in Windows registry but location is invalid."
+        if self.config["installDir"] == "" or not os.path.exists(self.config["installDir"]):
+            if self.config["installDir"] == "":
+                msg = "Europa Universalis 4 installation could not be found!"
 
             else:
-                msg = "Europa Universalis 4 installation could not be found!"
+                msg = "Europa Universalis default install location exists but is invalid."
 
             tkMessageBox.showerror("Error", msg + " Please select your installation folder manually.")
             folder = tkFileDialog.askdirectory(initialdir="/")
