@@ -9,7 +9,7 @@ Created on 21 aug. 2013
 VERSION = "1.0.5"
 
 # TODO: Show countries option: ALL, specific tag
-# TODO: better support for lower resolutions? (1280x720)
+# TODO: better support for lower resolutions? (e.g. 1280x720)
 # TODO: support for mods that change the map and/or trade network
 # TODO: full, tested support for Mac and Linux
 
@@ -31,8 +31,7 @@ import Tkinter as tk
 import tkFileDialog
 import tkMessageBox
 import ttk
-from PIL import Image, ImageTk
-from pyparsing import And
+from PIL import Image, ImageTk, ImageDraw
 
 # Tradeviz components
 from TradeGrammar import tradeSection
@@ -48,7 +47,7 @@ class TradeViz:
     def __init__(self):
         logging.debug("Initializing application")
         self.root = tk.Tk()
-        self.paneHeight = 100
+        self.paneHeight = 130
         self.w, self.h = self.root.winfo_screenwidth() - 15, self.root.winfo_screenheight() - self.paneHeight
         self.root.title("EU4 Trade Visualizer v%s" % VERSION)
         self.root.bind("<Escape>", lambda x: self.exit("Escape"))
@@ -60,13 +59,14 @@ class TradeViz:
             logging.error("Error setting application icon: %s" % e)
 
         try:
-            img = Image.open(provinceBMP)
-            self.mapWidth = img.size[0]
-            self.mapHeight = img.size[1]
-            img.thumbnail((self.w, self.h), Image.BICUBIC)
-            self.mapThumbSize = img.size
+            self.mapImg = Image.open(provinceBMP)
+            self.mapWidth = self.mapImg.size[0]
+            self.mapHeight = self.mapImg.size[1]
+            self.mapImg.thumbnail((self.w, self.h), Image.BICUBIC)
+            self.drawImg = self.mapImg.convert("RGB")
+            self.mapThumbSize = self.mapImg.size
             self.ratio = self.mapThumbSize[0] / float(self.mapWidth)
-            self.provinceImage = ImageTk.PhotoImage(img)
+            self.provinceImage = ImageTk.PhotoImage(self.mapImg)
         except Exception as e:
             logging.critical("Error preparing the world map!\n%s" % e)
 
@@ -174,8 +174,11 @@ class TradeViz:
         self.goButton = tk.Button(self.root, text="Go!", command=self.go)
         self.goButton.grid(row=2, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
 
+        self.saveImgButton = tk.Button(self.root, text="Save Map", command=self.saveMap)
+        self.saveImgButton.grid(row=3, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
+
         self.exitButton = tk.Button(self.root, text="Exit", command=lambda: self.exit("Button"))
-        self.exitButton.grid(row=3, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
+        self.exitButton.grid(row=4, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
 
         tk.Label(self.root, text="Nodes show:").grid(row=2, column=0, padx=(6, 2), pady=2, sticky="W")
         self.nodesShowVar = tk.StringVar()
@@ -428,11 +431,11 @@ class TradeViz:
         arrowShape = (max(8, lineWidth * 2), max(10, lineWidth * 2.5), max(5, lineWidth))
 
         if value > 0:
-            linecolor = "black"
+            linecolor = "#000"
         else:
             if self.showZeroVar.get() == 0:
                 return
-            linecolor = "yellow"
+            linecolor = "#ff0"
 
         if not self.pacificTrade(x, y, x2, y2):
 
@@ -446,11 +449,20 @@ class TradeViz:
                 self.canvas.create_line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
                         width=lineWidth, fill=linecolor)
 
+                self.mapDraw.line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
+                        width=lineWidth, fill=linecolor)
+                self.mapDraw.line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
+                        width=lineWidth, fill=linecolor)
+
             else:
                 self.canvas.create_line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
                         width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
 
-            self.canvas.create_text(centerOfLine, text=int(round(value)), fill="white")
+                self.mapDraw.line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                        width=lineWidth, fill=linecolor)
+
+            self.canvas.create_text(centerOfLine, text=int(round(value)), fill="#fff")
+            self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % round(value), fill="#fff")
 
         else:  # Trade route crosses edge of map
 
@@ -459,6 +471,11 @@ class TradeViz:
                                     width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
                 self.canvas.create_line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
                                     width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
+
+                self.mapDraw.line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
+                                    width=1, fill=linecolor)
+                self.mapDraw.line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                                    width=1, fill=linecolor)
 
                 # fraction of trade route left of "date line"
                 f = abs(self.mapWidth - float(x2)) / (self.mapWidth - abs(x - x2))
@@ -473,12 +490,18 @@ class TradeViz:
                 self.canvas.create_line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
                                     width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
 
+                self.mapDraw.line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
+                                    width=1, fill=linecolor)
+                self.mapDraw.line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                                    width=1, fill=linecolor)
+
                 f = abs(self.mapWidth - float(x)) / (self.mapWidth - abs(x - x2))
                 yf = y + f * (y2 - y)
 
                 centerOfLine = ((self.mapWidth + x) / 2 * ratio, (yf + y) / 2 * ratio)
 
-            self.canvas.create_text(centerOfLine, text=int(value), fill="white")
+            self.canvas.create_text(centerOfLine, text=int(value), fill="#fff")
+            self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % value, fill="#fff")
 
     def drawMap(self):
         """Top level method for redrawing the world map and trade network"""
@@ -487,6 +510,7 @@ class TradeViz:
         self.root.minsize(self.w, self.mapThumbSize[1] + self.paneHeight)
         self.root.maxsize(self.w, self.mapThumbSize[1] + self.paneHeight)
         self.canvas.create_image((0, 0), image=self.provinceImage, anchor=tk.NW)
+        self.mapDraw = ImageDraw.Draw(self.drawImg)
         ratio = self.ratio
 
         # draw incoming trade arrows
@@ -511,20 +535,28 @@ class TradeViz:
 
             if self.config["nodesShow"] == "Total value":
                 v = data["currentValue"]
-                tradeNodeColor = "red"
+                tradeNodeColor = "#d00"
             elif self.config["nodesShow"] == "Local value":
                 v = data["localValue"]
-                tradeNodeColor = "dark violet"
+                tradeNodeColor = "#90c"
+
 
             self.canvas.create_oval((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
                                     outline=tradeNodeColor, fill=tradeNodeColor)
             self.canvas.create_text((x * ratio, y * ratio), text=int(v), fill="white")
+
+            self.mapDraw.ellipse((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
+                                    outline=tradeNodeColor, fill=tradeNodeColor)
+            self.mapDraw.text((x * ratio - 4, y * ratio - 4), "%d" % v, fill="#fff")
 
         self.canvas.create_text((10, self.mapHeight * ratio - 40), anchor="nw",
                                 text="Player: %s" % self.player, fill="white")
 
         self.canvas.create_text((10, self.mapHeight * ratio - 20), anchor="nw",
                                 text="Date: %s" % self.date, fill="white")
+
+        self.mapDraw.text((10, self.mapHeight * ratio - 44), "Player: %s" % self.player, fill="#fff")
+        self.mapDraw.text((10, self.mapHeight * ratio - 24), "Date: %s" % self.date, fill="#fff")
 
     def pacificTrade(self, x, y , x2, y2):
         """Check whether a line goes around the east/west edge of the map"""
@@ -534,6 +566,18 @@ class TradeViz:
         distAcross = sqrt(xDistAcross ** 2 + abs(y - y2) ** 2)
 
         return (distAcross < directDist)
+
+    def saveMap(self):
+        logging.info("Saving map image...")
+
+        savename = tkFileDialog.asksaveasfilename(defaultextension=".gif", filetypes=[("GIF file", ".gif")], initialdir=os.path.expanduser("~"),
+                                                  title="Save as..")
+        if savename:
+            try:
+                self.drawImg = self.drawImg.convert("P", palette=Image.ADAPTIVE, dither=Image.NONE, colors=8)
+                self.drawImg.save(savename)
+            except Exception as e:
+                logging.error("Problem saving map image: %s" % e)
 
 if __name__ == "__main__":
 
