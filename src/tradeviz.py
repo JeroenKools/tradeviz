@@ -6,12 +6,12 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 
-# TODO: "Nodes show" option: current value, local value, total trade power
 # TODO: Show countries option: ALL, specific tag
 # TODO: better support for lower resolutions? (1280x720)
 # TODO: support for mods that change the map and/or trade network
+# TODO: full, tested support for Mac and Linux
 
 # DEPENDENDIES:
 # PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
@@ -30,7 +30,9 @@ from math import sqrt
 import Tkinter as tk
 import tkFileDialog
 import tkMessageBox
+import ttk
 from PIL import Image, ImageTk
+from pyparsing import And
 
 # Tradeviz components
 from TradeGrammar import tradeSection
@@ -49,6 +51,8 @@ class TradeViz:
         self.paneHeight = 100
         self.w, self.h = self.root.winfo_screenwidth() - 15, self.root.winfo_screenheight() - self.paneHeight
         self.root.title("EU4 Trade Visualizer v%s" % VERSION)
+        self.root.bind("<Escape>", lambda x: self.exit("Escape"))
+        self.root.wm_protocol("WM_DELETE_WINDOW", lambda: self.exit("Close Window"))
 
         try:
             self.root.iconbitmap(r"../res/merchant.ico")
@@ -69,6 +73,8 @@ class TradeViz:
         logging.debug("Setting up GUI")
         self.setupGUI()
         self.tradenodes = []
+        self.player = ""
+        self.date = ""
         self.drawMap()
         self.root.grid_columnconfigure(1, weight=1)
         self.getConfig()
@@ -85,13 +91,16 @@ class TradeViz:
         if os.path.exists(r"../tradeviz.cfg"):
             with open(r"../tradeviz.cfg") as f:
                 self.config = json.load(f)
-            if "savefile" in self.config:
-                self.saveEntry.insert(0, self.config["savefile"])
-            if "showZeroRoutes" in self.config:
-                self.showZeroVar.set(self.config["showZeroRoutes"])
 
         else:
-            self.config = {"savefile": "", "showZeroRoutes": 0}
+            self.config = {"savefile": "", "showZeroRoutes": 0, "nodesShow": "Total value"}
+
+        if "savefile" in self.config:
+            self.saveEntry.insert(0, self.config["savefile"])
+        if "showZeroRoutes" in self.config:
+            self.showZeroVar.set(self.config["showZeroRoutes"])
+        if "nodesShow" in self.config:
+            self.nodesShowVar.set(self.config["nodesShow"])
 
         if not "installDir" in self.config or not os.path.exists(self.config["installDir"]):
             self.getInstallDir()
@@ -155,7 +164,7 @@ class TradeViz:
         self.canvas = tk.Canvas(self.root, width=self.mapThumbSize[0], height=self.mapThumbSize[1])
         self.canvas.grid(row=0, column=0, columnspan=3, sticky=tk.W)
 
-        tk.Label(self.root, text="Save file:").grid(row=1, column=0, padx=6, pady=2)
+        tk.Label(self.root, text="Save file:").grid(row=1, column=0, padx=6, pady=2, sticky="W")
         self.saveEntry = tk.Entry(self.root)
         self.saveEntry.grid(row=1, column=1, sticky=tk.W + tk.E, padx=6, pady=2)
 
@@ -165,12 +174,21 @@ class TradeViz:
         self.goButton = tk.Button(self.root, text="Go!", command=self.go)
         self.goButton.grid(row=2, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
 
-        self.exitButton = tk.Button(self.root, text="Exit", command=self.exit)
+        self.exitButton = tk.Button(self.root, text="Exit", command=lambda: self.exit("Button"))
         self.exitButton.grid(row=3, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
 
+        tk.Label(self.root, text="Nodes show:").grid(row=2, column=0, padx=(6, 2), pady=2, sticky="W")
+        self.nodesShowVar = tk.StringVar()
+        self.nodesShow = ttk.Combobox(self.root, textvariable=self.nodesShowVar, values=["Local value", "Total value"],
+                                      state="readonly")
+        self.nodesShow.grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=6, pady=2)
+        self.nodesShowVar.trace("w", self.nodesShowChanged)
+
         self.showZeroVar = tk.IntVar(value=1)
-        self.showZeroes = tk.Checkbutton(self.root, text="Show unused trade routes", variable=self.showZeroVar, command=self.toggleShowZeroes)
-        self.showZeroes.grid(row=2, column=0, columnspan=2, sticky=tk.W, padx=6, pady=2)
+        self.showZeroes = tk.Checkbutton(self.root, text="Show unused trade routes",
+                                         variable=self.showZeroVar, command=self.toggleShowZeroes)
+        self.showZeroes.grid(row=3, column=0, columnspan=2, sticky=tk.W, padx=6, pady=2)
+
 
     def browse(self, event=None):
         """Let the user browse for an EU4 save file to be used by the program"""
@@ -209,14 +227,18 @@ class TradeViz:
         self.drawMap()
         self.saveConfig()
 
+    def nodesShowChanged(self, *args):
+        self.config["nodesShow"] = self.nodesShowVar.get()
+        self.drawMap()
 
-    def exit(self, event=None):
+
+    def exit(self, arg=""):
         """Close the program"""
 
-        logging.shutdown()
         self.saveConfig()
         self.root.update()
-        logging.info("Exiting...")
+        logging.info("Exiting... (%s)" % arg)
+        logging.shutdown()
         self.root.quit()
 
     def getTradeData(self, savepath):
@@ -224,7 +246,8 @@ class TradeViz:
 
         logging.debug("Getting trade data")
 
-        self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2), text="Please wait... Save file is being processed...", fill="white")
+        self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2),
+                                text="Please wait... Save file is being processed...", fill="white")
         self.root.update()
         logging.debug("Reading save file")
         with open(savepath) as f:
@@ -240,10 +263,22 @@ class TradeViz:
         d = result.asDict()
         r = {}
 
-        self.info("Done in %.3f seconds" % (time.time() - t0))
+        with open(savepath) as f:
+            for line in f:
+                if "=" in line:
+                    key, val = line.split("=")
+                    if key == "date":
+                        self.date = val.strip('" \n')
+                    elif key == "player":
+                        self.player = val.strip('" \n')
+                    elif key == "speed":
+                        break
+
+        logging.info("Done in %.3f seconds" % (time.time() - t0))
 
         self.maxIncoming = 0
         self.maxCurrent = 0
+        self.maxLocal = 0
 
         logging.debug("Processing parsed results")
 
@@ -258,6 +293,8 @@ class TradeViz:
 
                 if k == "currentValue":
                     self.maxCurrent = max(self.maxCurrent, d[k])
+                if k == "localValue":
+                    self.maxLocal = max(self.maxLocal, d[k])
                 if k == "incomingValue":
                     self.maxIncoming = max(self.maxIncoming, *d[k].asList())
 
@@ -320,10 +357,17 @@ class TradeViz:
         self.provinceLocations = locations
         assert locations[0] == (1, 3085.0, 325.0)
 
-    def getNodeRadius(self, value):
+    def getNodeRadius(self, node):
         """Calculate the radius for a trade node given its value"""
 
-        return 5 + int(7 * value / self.maxCurrent)
+        if self.config["nodesShow"] == "Total value":
+            value = node["currentValue"] / self.maxCurrent
+        elif self.config["nodesShow"] == "Local value":
+            value = node["localValue"] / self.maxLocal
+        else:
+            logging.error("Invalid nodesShow option: %s" % self.config["nodesShow"])
+
+        return 5 + int(7 * value)
 
     def intersectsNode(self, node1, node2):
         """Check whether a trade route intersects a trade node circle (other than source and target nodes)
@@ -333,7 +377,8 @@ class TradeViz:
         for n, node3 in enumerate(self.tradenodes):
             nx, ny = self.getNodeLocation(n + 1)
             data = self.nodeData[node3[0]]
-            r = self.getNodeRadius(data["currentValue"]) / self.ratio
+
+            r = self.getNodeRadius(data) / self.ratio
 
             # assume circle center is at 0,0
             x2, y2 = self.getNodeLocation(node1)
@@ -353,9 +398,10 @@ class TradeViz:
             det = r ** 2 * dr ** 2 - D ** 2
 
             if det > 0:
-                # infinite line intersects, check whether the center node is inside the rectangle defined by the other nodes
+            # infinite line intersects, check whether the center node is inside the rectangle defined by the other nodes
                 if min(x1, x2) < 0 and max(x1, x2) > 0 and min(y1, y2) < 0 and max(y1, y2) > 0:
-                    logging.debug("%s is intersected by a trade route between %s and %s" % (self.getNodeName(n + 1), self.getNodeName(node1), self.getNodeName(node2)))
+                    logging.debug("%s is intersected by a trade route between %s and %s" %
+                                  (self.getNodeName(n + 1), self.getNodeName(node1), self.getNodeName(node2)))
                     return True
 
     def drawArrow(self, fromNode, toNode, value, toRadius):
@@ -454,18 +500,31 @@ class TradeViz:
                     fromNodeNr = data["incomingFromNode"][i]
 
                     value = data["incomingValue"][i]
-                    self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data["currentValue"]))
+                    self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data))
 
         # draw trade nodes and their current value
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
 
             data = self.nodeData[node[0]]
-            s = self.getNodeRadius(data["currentValue"])
+            s = self.getNodeRadius(data)
 
-            self.canvas.create_oval((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s), outline="red",
-                                    fill="red")
-            self.canvas.create_text((x * ratio, y * ratio), text=int(data["currentValue"]), fill="white")
+            if self.config["nodesShow"] == "Total value":
+                v = data["currentValue"]
+                tradeNodeColor = "red"
+            elif self.config["nodesShow"] == "Local value":
+                v = data["localValue"]
+                tradeNodeColor = "dark violet"
+
+            self.canvas.create_oval((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
+                                    outline=tradeNodeColor, fill=tradeNodeColor)
+            self.canvas.create_text((x * ratio, y * ratio), text=int(v), fill="white")
+
+        self.canvas.create_text((10, self.mapHeight * ratio - 40), anchor="nw",
+                                text="Player: %s" % self.player, fill="white")
+
+        self.canvas.create_text((10, self.mapHeight * ratio - 20), anchor="nw",
+                                text="Date: %s" % self.date, fill="white")
 
     def pacificTrade(self, x, y , x2, y2):
         """Check whether a line goes around the east/west edge of the map"""
