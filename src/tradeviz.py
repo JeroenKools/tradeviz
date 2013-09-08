@@ -6,11 +6,10 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.0.5"
+VERSION = "1.1.0"
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: better support for lower resolutions? (e.g. 1280x720)
-# TODO: support for mods that change the map and/or trade network
 # TODO: full, tested support for Mac and Linux
 
 # DEPENDENDIES:
@@ -30,6 +29,7 @@ from math import sqrt
 import Tkinter as tk
 import tkFileDialog
 import tkMessageBox
+import tkFont
 import ttk
 from PIL import Image, ImageTk, ImageDraw
 
@@ -93,7 +93,7 @@ class TradeViz:
                 self.config = json.load(f)
 
         else:
-            self.config = {"savefile": "", "showZeroRoutes": 0, "nodesShow": "Total value"}
+            self.config = {}
 
         if "savefile" in self.config:
             self.saveEntry.insert(0, self.config["savefile"])
@@ -101,12 +101,20 @@ class TradeViz:
             self.showZeroVar.set(self.config["showZeroRoutes"])
         if "nodesShow" in self.config:
             self.nodesShowVar.set(self.config["nodesShow"])
+        if "lastModFolder" in self.config:
+            self.modFolderVar.set(self.config["lastModFolder"])
+        if "modFolders" in self.config:
+            self.modFolder.configure(values=[""] + self.config["modFolders"])
+
+        defaults = {"savefile": "", "showZeroRoutes": 0, "nodesShow": "Total value",
+                    "modFolders": [], "lastModFolder": ""}
+
+        for k in defaults:
+            if not k in self.config:
+                self.config[k] = defaults[k]
 
         if not "installDir" in self.config or not os.path.exists(self.config["installDir"]):
             self.getInstallDir()
-
-        self.tradenodesfile = os.path.join(self.config["installDir"], r"common\tradenodes\00_tradenodes.txt")
-        self.locationsfile = os.path.join(self.config["installDir"], r"map\positions.txt")
 
         self.saveConfig()
 
@@ -162,39 +170,55 @@ class TradeViz:
         """Initialize the user interface elements"""
 
         self.canvas = tk.Canvas(self.root, width=self.mapThumbSize[0], height=self.mapThumbSize[1])
-        self.canvas.grid(row=0, column=0, columnspan=3, sticky=tk.W)
+        self.canvas.grid(row=0, column=0, columnspan=4, sticky=tk.W)
+
+        # Labels, entries, checkboxes
 
         tk.Label(self.root, text="Save file:").grid(row=1, column=0, padx=6, pady=2, sticky="W")
         self.saveEntry = tk.Entry(self.root)
-        self.saveEntry.grid(row=1, column=1, sticky=tk.W + tk.E, padx=6, pady=2)
+        self.saveEntry.grid(row=1, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
 
-        self.browseFileBtn = tk.Button(self.root, text="Browse...", command=self.browse)
-        self.browseFileBtn.grid(row=1, column=2, sticky=tk.E, padx=6, pady=4)
+        tk.Label(self.root, text="Mod folder:").grid(row=2, column=0, padx=(6, 2), pady=2, sticky="W")
+        self.modFolderVar = tk.StringVar()
+        self.modFolder = ttk.Combobox(self.root, textvariable=self.modFolderVar, values=[""], state="readonly")
+        self.modFolder.grid(row=2, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
+        self.modFolderVar.trace("w", self.modFolderChanged)
 
-        self.goButton = tk.Button(self.root, text="Go!", command=self.go)
-        self.goButton.grid(row=2, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
-
-        self.saveImgButton = tk.Button(self.root, text="Save Map", command=self.saveMap)
-        self.saveImgButton.grid(row=3, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
-
-        self.exitButton = tk.Button(self.root, text="Exit", command=lambda: self.exit("Button"))
-        self.exitButton.grid(row=4, column=2, sticky=tk.E + tk.W, padx=6, pady=2)
-
-        tk.Label(self.root, text="Nodes show:").grid(row=2, column=0, padx=(6, 2), pady=2, sticky="W")
+        tk.Label(self.root, text="Nodes show:").grid(row=3, column=0, padx=(6, 2), pady=2, sticky="W")
         self.nodesShowVar = tk.StringVar()
         self.nodesShow = ttk.Combobox(self.root, textvariable=self.nodesShowVar, values=["Local value", "Total value"],
                                       state="readonly")
-        self.nodesShow.grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=6, pady=2)
+        self.nodesShow.grid(row=3, column=1, columnspan=2, sticky=tk.W, padx=6, pady=2)
         self.nodesShowVar.trace("w", self.nodesShowChanged)
 
         self.showZeroVar = tk.IntVar(value=1)
         self.showZeroes = tk.Checkbutton(self.root, text="Show unused trade routes",
                                          variable=self.showZeroVar, command=self.toggleShowZeroes)
-        self.showZeroes.grid(row=3, column=0, columnspan=2, sticky=tk.W, padx=6, pady=2)
+        self.showZeroes.grid(row=4, column=0, columnspan=2, sticky=tk.W, padx=6, pady=2)
+
+        # Buttons
+
+        self.browseFileBtn = tk.Button(self.root, text="Browse...", command=self.browseSave)
+        self.browseFileBtn.grid(row=1, column=3, sticky=tk.E, padx=6, pady=4)
+
+        self.browseModFolderBtn = tk.Button(self.root, text="Browse...", command=self.browseMod)
+        self.browseModFolderBtn.grid(row=2, column=3, sticky=tk.E, padx=6, pady=4)
+
+        self.goButton = tk.Button(self.root, text="Go!", command=self.go)
+        self.goButton.grid(row=4, column=1, sticky=tk.E , ipadx=20, padx=6, pady=2)
+        font = tkFont.Font(font=self.goButton["font"])
+        font["weight"] = "bold"
+        self.goButton["font"] = font
+
+        self.saveImgButton = tk.Button(self.root, text="Save Map", command=self.saveMap)
+        self.saveImgButton.grid(row=4, column=2, sticky=tk.E, padx=6, pady=2)
+
+        self.exitButton = tk.Button(self.root, text="Exit", command=lambda: self.exit("Button"))
+        self.exitButton.grid(row=4, column=3, sticky=tk.E + tk.W, padx=6, pady=2)
 
 
-    def browse(self, event=None):
-        """Let the user browse for an EU4 save file to be used by the program"""
+    def browseSave(self, event=None):
+        """Let the user browseSave for an EU4 save file to be used by the program"""
 
         logging.debug("Browsing for save file")
 
@@ -210,6 +234,39 @@ class TradeViz:
         self.saveEntry.delete(0, tk.END)
         self.saveEntry.insert(0, self.config["savefile"])
 
+    def browseMod(self, event=None):
+
+        logging.debug("Browsing for mod folder")
+
+        initDir = "/"
+        if self.config["lastModFolder"]:
+            initDir = os.path.split(self.config["lastModFolder"])[0]
+        else:
+            for folder in self.config["modFolders"]:
+                if folder:
+                    initDir = os.path.basename(folder)
+                    break
+
+        dirname = tkFileDialog.askdirectory(initialdir=initDir)
+
+        logging.debug("Selected mod folder %s" % dirname)
+
+        if not os.path.basename(os.path.dirname(dirname)) == "mod":
+            if dirname:
+                if sys.platform == "win32":
+                    tkMessageBox.showerror("Error",
+                        "This does not seem to be a valid mod folder!\n\n" + \
+                        "Please select a subdirectory of\nMy Documents\Paradox Interactive\Europa Universalis IV\mod.")
+                else:
+                    tkMessageBox.showerror("Error", "This does not seem to be a valid mod folder!")
+            return
+
+        self.modFolderVar.set(dirname)
+        if not dirname in self.config["modFolders"]:
+            self.config["modFolders"] += [dirname]
+
+        self.config["lastModFolder"] = dirname
+
     def go(self, event=None):
         """Start parsing the selected save file and show the results on the map"""
 
@@ -218,7 +275,12 @@ class TradeViz:
         if self.config["savefile"]:
             self.getTradeData(self.config["savefile"])
             self.getNodeData()
-            self.drawMap()
+            try:
+                self.drawMap()
+            except InvalidTradeNodeException as e:
+                logging.error("Invalid trade node index: %s" % e)
+                tkMessageBox.showerror("Error", "Save file contains invalid trade node info. " +
+                       "If your save is from a modded game, please indicate the mod folder and try again.")
 
     def toggleShowZeroes(self, event=None):
         """Turn the display of trade routes with a value of zero on or off"""
@@ -234,6 +296,8 @@ class TradeViz:
         self.config["nodesShow"] = self.nodesShowVar.get()
         self.drawMap()
 
+    def modFolderChanged(self, *args):
+        self.config["lastModFolder"] = self.modFolderVar.get()
 
     def exit(self, arg=""):
         """Close the program"""
@@ -252,7 +316,7 @@ class TradeViz:
         self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2),
                                 text="Please wait... Save file is being processed...", fill="white")
         self.root.update()
-        logging.debug("Reading save file")
+        logging.debug("Reading save file %s" % os.path.basename(savepath))
         with open(savepath) as f:
             txt = f.read()
             txt = txt.split("trade=")[1]
@@ -317,17 +381,38 @@ class TradeViz:
         return node[0]
 
     def getNodeLocation(self, nodeID):
+        if nodeID > len(self.tradenodes) + 1:
+            raise InvalidTradeNodeException(nodeID)
         node = self.tradenodes[nodeID - 1]
         provinceID = node[1]
+
 
         for loc in self.provinceLocations:
             if loc[0] == provinceID:
                 return loc[1:]
 
     def getNodeData(self):
-        """Retrieve trade node and province information from the game files"""
+        """Retrieve trade node and province information from the game or mod files"""
 
         logging.debug("Getting node data")
+
+        modFolder = self.modFolder.get()
+        tradenodes = r"common\tradenodes\00_tradenodes.txt"
+        positions = r"map\positions.txt"
+
+        if modFolder and os.path.exists(os.path.join(modFolder, tradenodes)):
+            self.tradenodesfile = os.path.join(modFolder, tradenodes)
+            logging.debug("Using modded tradenodes file")
+        else:
+            self.tradenodesfile = os.path.join(self.config["installDir"], tradenodes)
+            logging.debug("Using default tradenodes file")
+
+        if modFolder and os.path.exists(os.path.join(modFolder, positions)):
+            self.tradenodesfile = os.path.join(modFolder, positions)
+            logging.debug("Using modded positions file")
+        else:
+            self.positions = os.path.join(self.config["installDir"], positions)
+            logging.debug("Using default positions file")
 
         # Get all tradenode provinceIDs
         try:
@@ -342,11 +427,10 @@ class TradeViz:
             tradenodes[i] = (a, int(b))
 
         self.tradenodes = tradenodes
-        assert tradenodes[0] == ("california", 871)
 
         # Get all province locations
         try:
-            with open(self.locationsfile, "r") as f:
+            with open(self.positions, "r") as f:
                 txt = f.read()
                 locations = re.findall(r"(\d+)=\s*{\s*position=\s*{\s*([\d\.]*)\s*([\d\.]*)", txt)
         except IOError as e:
@@ -358,7 +442,6 @@ class TradeViz:
             locations[i] = (int(a), float(b), self.mapHeight - float(c))  # invert y coordinate :)
 
         self.provinceLocations = locations
-        assert locations[0] == (1, 3085.0, 325.0)
 
     def getNodeRadius(self, node):
         """Calculate the radius for a trade node given its value"""
@@ -423,12 +506,19 @@ class TradeViz:
         dy = y - y2
         l = sqrt(dx ** 2 + dy ** 2)
         radiusFraction = toRadius / l
-        x -= radiusFraction * 3 * dx
-        y -= radiusFraction * 3 * dy
+
+        # adjust to stop at node circle's edge
+        x -= 3 * dx * radiusFraction
+        y -= 3 * dy * radiusFraction
+
+        # rescale to unit length
+        dx /= l
+        dy /= l
 
         ratio = self.ratio
         lineWidth = int(10 * value / self.maxIncoming)
         arrowShape = (max(8, lineWidth * 2), max(10, lineWidth * 2.5), max(5, lineWidth))
+        w = max(5 / ratio, 1.5 * lineWidth / ratio)
 
         if value > 0:
             linecolor = "#000"
@@ -441,6 +531,7 @@ class TradeViz:
 
             centerOfLine = ((x + x2) / 2 * ratio, (y + y2) / 2 * ratio)
 
+
             if self.intersectsNode(fromNode, toNode):
                 d = 20
                 centerOfLine = (centerOfLine[0] + d, centerOfLine[1] + d)
@@ -451,8 +542,16 @@ class TradeViz:
 
                 self.mapDraw.line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
                         width=lineWidth, fill=linecolor)
+                self.mapDraw.polygon(
+                                        (x * ratio, y * ratio,
+                                        (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
+                                        (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
+                                    ),
+                                     outline=linecolor, fill=linecolor)
+
                 self.mapDraw.line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
                         width=lineWidth, fill=linecolor)
+
 
             else:
                 self.canvas.create_line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
@@ -460,6 +559,13 @@ class TradeViz:
 
                 self.mapDraw.line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
                         width=lineWidth, fill=linecolor)
+
+                self.mapDraw.polygon(
+                                    (x * ratio, y * ratio,
+                                    (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
+                                    (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
+                                    ),
+                                     outline=linecolor, fill=linecolor)
 
             self.canvas.create_text(centerOfLine, text=int(round(value)), fill="#fff")
             self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % round(value), fill="#fff")
@@ -476,6 +582,12 @@ class TradeViz:
                                     width=1, fill=linecolor)
                 self.mapDraw.line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
                                     width=1, fill=linecolor)
+                self.mapDraw.polygon(
+                                        (x * ratio, y * ratio,
+                                        (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
+                                        (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
+                                    ),
+                                     outline=linecolor, fill=linecolor)
 
                 # fraction of trade route left of "date line"
                 f = abs(self.mapWidth - float(x2)) / (self.mapWidth - abs(x - x2))
@@ -494,6 +606,12 @@ class TradeViz:
                                     width=1, fill=linecolor)
                 self.mapDraw.line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
                                     width=1, fill=linecolor)
+                self.mapDraw.polygon(
+                                        (x * ratio, y * ratio,
+                                        (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
+                                        (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
+                                    ),
+                                     outline=linecolor, fill=linecolor)
 
                 f = abs(self.mapWidth - float(x)) / (self.mapWidth - abs(x - x2))
                 yf = y + f * (y2 - y)
@@ -510,6 +628,7 @@ class TradeViz:
         self.root.minsize(self.w, self.mapThumbSize[1] + self.paneHeight)
         self.root.maxsize(self.w, self.mapThumbSize[1] + self.paneHeight)
         self.canvas.create_image((0, 0), image=self.provinceImage, anchor=tk.NW)
+        self.drawImg = self.mapImg.convert("RGB")
         self.mapDraw = ImageDraw.Draw(self.drawImg)
         ratio = self.ratio
 
@@ -540,6 +659,7 @@ class TradeViz:
                 v = data["localValue"]
                 tradeNodeColor = "#90c"
 
+            digits = len("%i" % v)
 
             self.canvas.create_oval((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
                                     outline=tradeNodeColor, fill=tradeNodeColor)
@@ -547,7 +667,7 @@ class TradeViz:
 
             self.mapDraw.ellipse((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
                                     outline=tradeNodeColor, fill=tradeNodeColor)
-            self.mapDraw.text((x * ratio - 4, y * ratio - 4), "%d" % v, fill="#fff")
+            self.mapDraw.text((x * ratio - 3 * digits, y * ratio - 4), "%d" % v, fill="#fff")
 
         self.canvas.create_text((10, self.mapHeight * ratio - 40), anchor="nw",
                                 text="Player: %s" % self.player, fill="white")
@@ -578,6 +698,17 @@ class TradeViz:
                 self.drawImg.save(savename)
             except Exception as e:
                 logging.error("Problem saving map image: %s" % e)
+
+def sign(self, v):
+    if v < 0:
+        return -1
+    else:
+        return 1
+
+class InvalidTradeNodeException(Exception):
+    def InvalidTradeNodeException(self, msg):
+        Exception.__init__(self)
+        self.message = msg
 
 if __name__ == "__main__":
 
