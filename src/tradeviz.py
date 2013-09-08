@@ -6,7 +6,7 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: better support for lower resolutions? (e.g. 1280x720)
@@ -341,7 +341,7 @@ class TradeViz:
                     elif key == "speed":
                         break
 
-        logging.info("Done in %.3f seconds" % (time.time() - t0))
+        logging.info("Finished parsing save in %.3f seconds" % (time.time() - t0))
 
         self.maxIncoming = 0
         self.maxCurrent = 0
@@ -624,6 +624,8 @@ class TradeViz:
     def drawMap(self):
         """Top level method for redrawing the world map and trade network"""
 
+        logging.debug("Drawing map..")
+        t0 = time.time()
         self.root.geometry("%dx%d+0+0" % (self.w, self.mapThumbSize[1] + self.paneHeight))
         self.root.minsize(self.w, self.mapThumbSize[1] + self.paneHeight)
         self.root.maxsize(self.w, self.mapThumbSize[1] + self.paneHeight)
@@ -677,6 +679,8 @@ class TradeViz:
 
         self.mapDraw.text((10, self.mapHeight * ratio - 44), "Player: %s" % self.player, fill="#fff")
         self.mapDraw.text((10, self.mapHeight * ratio - 24), "Date: %s" % self.date, fill="#fff")
+
+        logging.info("Finished drawing map in %.3f seconds" % (time.time() - t0))
 
     def pacificTrade(self, x, y , x2, y2):
         """Check whether a line goes around the east/west edge of the map"""
