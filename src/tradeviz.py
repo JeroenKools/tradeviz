@@ -408,7 +408,7 @@ class TradeViz:
             logging.debug("Using default tradenodes file")
 
         if modFolder and os.path.exists(os.path.join(modFolder, positions)):
-            self.tradenodesfile = os.path.join(modFolder, positions)
+            self.positions = os.path.join(modFolder, positions)
             logging.debug("Using modded positions file")
         else:
             self.positions = os.path.join(self.config["installDir"], positions)
