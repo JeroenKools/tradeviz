@@ -6,11 +6,12 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: better support for lower resolutions? (e.g. 1280x720)
 # TODO: full, tested support for Mac and Linux
+# TODO: Test zip mod support
 
 # DEPENDENDIES:
 # PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
@@ -23,7 +24,8 @@ import re
 import os
 import sys
 import json
-from math import sqrt
+import zipfile
+from math import sqrt, ceil, log
 
 # GUI stuff
 import Tkinter as tk
@@ -101,13 +103,13 @@ class TradeViz:
             self.showZeroVar.set(self.config["showZeroRoutes"])
         if "nodesShow" in self.config:
             self.nodesShowVar.set(self.config["nodesShow"])
-        if "lastModFolder" in self.config:
-            self.modFolderVar.set(self.config["lastModFolder"])
-        if "modFolders" in self.config:
-            self.modFolder.configure(values=[""] + self.config["modFolders"])
+        if "lastModPath" in self.config:
+            self.modPathVar.set(self.config["lastModPath"])
+        if "modPaths" in self.config:
+            self.modPathComboBox.configure(values=[""] + self.config["modPaths"])
 
         defaults = {"savefile": "", "showZeroRoutes": 0, "nodesShow": "Total value",
-                    "modFolders": [], "lastModFolder": ""}
+                    "modPaths": [], "lastModPath": ""}
 
         for k in defaults:
             if not k in self.config:
@@ -178,11 +180,11 @@ class TradeViz:
         self.saveEntry = tk.Entry(self.root)
         self.saveEntry.grid(row=1, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
 
-        tk.Label(self.root, text="Mod folder:").grid(row=2, column=0, padx=(6, 2), pady=2, sticky="W")
-        self.modFolderVar = tk.StringVar()
-        self.modFolder = ttk.Combobox(self.root, textvariable=self.modFolderVar, values=[""], state="readonly")
-        self.modFolder.grid(row=2, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
-        self.modFolderVar.trace("w", self.modFolderChanged)
+        tk.Label(self.root, text="Mod:").grid(row=2, column=0, padx=(6, 2), pady=2, sticky="W")
+        self.modPathVar = tk.StringVar()
+        self.modPathComboBox = ttk.Combobox(self.root, textvariable=self.modPathVar, values=[""], state="readonly")
+        self.modPathComboBox.grid(row=2, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
+        self.modPathVar.trace("w", self.modPathChanged)
 
         tk.Label(self.root, text="Nodes show:").grid(row=3, column=0, padx=(6, 2), pady=2, sticky="W")
         self.nodesShowVar = tk.StringVar()
@@ -236,36 +238,39 @@ class TradeViz:
 
     def browseMod(self, event=None):
 
-        logging.debug("Browsing for mod folder")
+        logging.debug("Browsing for mod")
 
         initDir = "/"
-        if self.config["lastModFolder"]:
-            initDir = os.path.split(self.config["lastModFolder"])[0]
+        if self.config["lastModPath"]:
+            initDir = os.path.split(self.config["lastModPath"])[0]
         else:
-            for folder in self.config["modFolders"]:
-                if folder:
-                    initDir = os.path.basename(folder)
+            for path in self.config["modPaths"]:
+                if path:  # not empty
+                    initDir = os.path.basename(path)
                     break
 
-        dirname = tkFileDialog.askdirectory(initialdir=initDir)
+        modpath = tkFileDialog.askopenfilename(filetypes=[("EU4 Mods", "*.mod")], initialdir=initDir)
 
-        logging.debug("Selected mod folder %s" % dirname)
+        logging.debug("Selected mod path %s" % modpath)
 
-        if not os.path.basename(os.path.dirname(dirname)) == "mod":
-            if dirname:
+        modzip = modpath.replace(".mod", ".zip")
+        moddir = modpath.replace(".mod", "")
+
+        if not os.path.exists(modzip) or os.path.exists(moddir):
+            if modpath:
                 if sys.platform == "win32":
                     tkMessageBox.showerror("Error",
-                        "This does not seem to be a valid mod folder!\n\n" + \
+                        "This does not seem to be a valid mod path!\n\n" + \
                         "Please select a subdirectory of\nMy Documents\Paradox Interactive\Europa Universalis IV\mod.")
                 else:
-                    tkMessageBox.showerror("Error", "This does not seem to be a valid mod folder!")
+                    tkMessageBox.showerror("Error", "This does not seem to be a valid mod path!")
             return
 
-        self.modFolderVar.set(dirname)
-        if not dirname in self.config["modFolders"]:
-            self.config["modFolders"] += [dirname]
+        self.modPathVar.set(modpath)
+        if not modpath in self.config["modPaths"]:
+            self.config["modPaths"] += [modpath]
 
-        self.config["lastModFolder"] = dirname
+        self.config["lastModPath"] = modpath
 
     def go(self, event=None):
         """Start parsing the selected save file and show the results on the map"""
@@ -296,8 +301,8 @@ class TradeViz:
         self.config["nodesShow"] = self.nodesShowVar.get()
         self.drawMap()
 
-    def modFolderChanged(self, *args):
-        self.config["lastModFolder"] = self.modFolderVar.get()
+    def modPathChanged(self, *args):
+        self.config["lastModPath"] = self.modPathVar.get()
 
     def exit(self, arg=""):
         """Close the program"""
@@ -396,31 +401,39 @@ class TradeViz:
 
         logging.debug("Getting node data")
 
-        modFolder = self.modFolder.get()
         tradenodes = r"common\tradenodes\00_tradenodes.txt"
         positions = r"map\positions.txt"
 
-        if modFolder and os.path.exists(os.path.join(modFolder, tradenodes)):
-            self.tradenodesfile = os.path.join(modFolder, tradenodes)
-            logging.debug("Using modded tradenodes file")
-        else:
-            self.tradenodesfile = os.path.join(self.config["installDir"], tradenodes)
-            logging.debug("Using default tradenodes file")
+        modPath = self.modPathComboBox.get()
+        modType = ""
+        if modPath and os.path.isdir(modPath):
+            modType = "dir"
+        elif modPath.endswith(".zip"):
+            modType = "zip"
 
-        if modFolder and os.path.exists(os.path.join(modFolder, positions)):
-            self.positions = os.path.join(modFolder, positions)
-            logging.debug("Using modded positions file")
-        else:
-            self.positions = os.path.join(self.config["installDir"], positions)
-            logging.debug("Using default positions file")
-
-        # Get all tradenode provinceIDs
+        # Get all tradenode provinceIDs, modded or default
         try:
-            with open(self.tradenodesfile, "r") as f:
-                txt = f.read()
-                tradenodes = re.findall(r"(\w+)=\s*{\s*location=(\d+)", txt)
+            if modType == "zip":
+                z = zipfile.ZipFile(modPath)
+                if os.path.normpath(tradenodes) in z.namelist():
+                    logging.debug("Using tradenodes file from zipped mod")
+                    with z.open(tradenodes) as f:
+                        txt = f.read()
+
+            else:
+                if modType == "dir" and os.path.exists(os.path.join(modPath, tradenodes)):
+                    tradenodesfile = os.path.join(modPath, tradenodes)
+                    logging.debug("Using tradenodes file from mod directory")
+                else:
+                    tradenodesfile = os.path.join(self.config["installDir"], tradenodes)
+                    logging.debug("Using default tradenodes file")
+
+                with open(tradenodesfile, "r") as f:
+                    txt = f.read()
         except IOError as e:
-            logging.critical("Could not find trade nodes file: %s" % e)
+            logging.critical("Could not o trade nodes file: %s" % e)
+
+        tradenodes = re.findall(r"(\w+)=\s*{\s*location=(\d+)", txt)
 
         for i in range(len(tradenodes)):
             a, b = tradenodes[i]
@@ -428,14 +441,31 @@ class TradeViz:
 
         self.tradenodes = tradenodes
 
-        # Get all province locations
+        # Now get province positions
+
         try:
-            with open(self.positions, "r") as f:
-                txt = f.read()
-                locations = re.findall(r"(\d+)=\s*{\s*position=\s*{\s*([\d\.]*)\s*([\d\.]*)", txt)
+            if modType == "zip":
+                z = zipfile.ZipFile(modPath)
+                if os.path.normpath(positions) in z.namelist():
+                    logging.debug("Using positions file from zipped mod")
+                    with z.open(tradenodes) as f:
+                        txt = f.read()
+            else:
+                if modType == "dir" and os.path.exists(os.path.join(modPath, positions)):
+                    positionsfile = os.path.join(modPath, positions)
+                    logging.debug("Using positions file from mod directory")
+                else:
+                    positionsfile = os.path.join(self.config["installDir"], positions)
+                    logging.debug("Using default positions file")
+
+
+                with open(positionsfile, "r") as f:
+                    txt = f.read()
         except IOError as e:
             logging.critical("Could not find locations file: %s" % e)
 
+
+        locations = re.findall(r"(\d+)=\s*{\s*position=\s*{\s*([\d\.]*)\s*([\d\.]*)", txt)
         for i in range(len(locations)):
             a, b, c = locations[i]
 
@@ -516,7 +546,11 @@ class TradeViz:
         dy /= l
 
         ratio = self.ratio
-        lineWidth = int(10 * value / self.maxIncoming)
+        # lineWidth = int(ceil(10 * value / self.maxIncoming))
+        if value > 0:
+            lineWidth = int(round(10 * sqrt(value) / sqrt(self.maxIncoming)))
+        else:
+            lineWidth = 1
         arrowShape = (max(8, lineWidth * 2), max(10, lineWidth * 2.5), max(5, lineWidth))
         w = max(5 / ratio, 1.5 * lineWidth / ratio)
 
