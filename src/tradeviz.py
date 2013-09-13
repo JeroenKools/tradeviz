@@ -6,7 +6,7 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: better support for lower resolutions? (e.g. 1280x720)
@@ -256,14 +256,9 @@ class TradeViz:
         modzip = modpath.replace(".mod", ".zip")
         moddir = modpath.replace(".mod", "")
 
-        if not os.path.exists(modzip) or os.path.exists(moddir):
+        if not os.path.exists(modzip) and not os.path.exists(moddir):
             if modpath:
-                if sys.platform == "win32":
-                    tkMessageBox.showerror("Error",
-                        "This does not seem to be a valid mod path!\n\n" + \
-                        "Please select a subdirectory of\nMy Documents\Paradox Interactive\Europa Universalis IV\mod.")
-                else:
-                    tkMessageBox.showerror("Error", "This does not seem to be a valid mod path!")
+                tkMessageBox.showerror("Error", "This does not seem to be a valid mod path!")
             return
 
         self.modPathVar.set(modpath)
@@ -405,24 +400,33 @@ class TradeViz:
         positions = r"map\positions.txt"
 
         modPath = self.modPathComboBox.get()
+        modzip = modPath.replace(".mod", ".zip")
+        moddir = modPath.replace(".mod", "")
+
         modType = ""
-        if modPath and os.path.isdir(modPath):
+        if modPath and os.path.isdir(moddir):
             modType = "dir"
-        elif modPath.endswith(".zip"):
+        elif os.path.exists(modzip):
             modType = "zip"
 
         # Get all tradenode provinceIDs, modded or default
         try:
             if modType == "zip":
-                z = zipfile.ZipFile(modPath)
+                z = zipfile.ZipFile(modzip)
                 if os.path.normpath(tradenodes) in z.namelist():
                     logging.debug("Using tradenodes file from zipped mod")
                     with z.open(tradenodes) as f:
                         txt = f.read()
+                else:
+                    tradenodesfile = os.path.join(self.config["installDir"], tradenodes)
+                    logging.debug("Using default tradenodes file")
+
+                with open(tradenodesfile, "r") as f:
+                    txt = f.read()
 
             else:
-                if modType == "dir" and os.path.exists(os.path.join(modPath, tradenodes)):
-                    tradenodesfile = os.path.join(modPath, tradenodes)
+                if modType == "dir" and os.path.exists(os.path.join(moddir, tradenodes)):
+                    tradenodesfile = os.path.join(moddir, tradenodes)
                     logging.debug("Using tradenodes file from mod directory")
                 else:
                     tradenodesfile = os.path.join(self.config["installDir"], tradenodes)
@@ -445,14 +449,20 @@ class TradeViz:
 
         try:
             if modType == "zip":
-                z = zipfile.ZipFile(modPath)
+                z = zipfile.ZipFile(modzip)
                 if os.path.normpath(positions) in z.namelist():
                     logging.debug("Using positions file from zipped mod")
-                    with z.open(tradenodes) as f:
+                    with z.open(positions) as f:
                         txt = f.read()
+                else:
+                    tradenodesfile = os.path.join(self.config["installDir"], positions)
+                    logging.debug("Using default tradenodes file")
+
+                with open(tradenodesfile, "r") as f:
+                    txt = f.read()
             else:
-                if modType == "dir" and os.path.exists(os.path.join(modPath, positions)):
-                    positionsfile = os.path.join(modPath, positions)
+                if modType == "dir" and os.path.exists(os.path.join(moddir, positions)):
+                    positionsfile = os.path.join(moddir, positions)
                     logging.debug("Using positions file from mod directory")
                 else:
                     positionsfile = os.path.join(self.config["installDir"], positions)
