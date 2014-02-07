@@ -100,7 +100,7 @@ nodeSection = (Literal("node").suppress() + eq + begin + \
                  pullPowerLine +
                  retainPowerLine +
                  highestPowerLine +
-                OneOrMore(powerSection).suppress() +
+                ZeroOrMore(powerSection).suppress() +
                 ZeroOrMore(incomingSection) +
                 tradegoodSection +
                 Optional(topProvincesSection) +
