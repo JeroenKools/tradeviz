@@ -16,6 +16,7 @@ VERSION = "1.1.4"
 # DEPENDENDIES:
 # PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
 # Python Imaging Library: http://www.pythonware.com/products/pil/
+# On Ubuntu: aptitude install python-tk python-imaging python-imaging-tk python-pyparsing
 
 # standardlib stuff
 import logging
@@ -42,7 +43,7 @@ from TradeGrammar import tradeSection
 provinceBMP = "../res/worldmap.gif"
 WinRegKey = "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 236850"  # Win64 only...
 MacDefaultPath = os.path.expanduser("~/Library/Application Support/Steam/Steamapps/common/Europa Universalis IV")
-LinuxDefaultPath = os.path.expanduser("~/Steam/Steamapps/common/Europa Universalis IV")
+LinuxDefaultPath = os.path.expanduser("~/.local/share/Steam/SteamApps/common/Europa Universalis IV")
 
 # Colors
 LIGHT_SLATE = "#36434b"
@@ -430,8 +431,8 @@ class TradeViz:
 
         logging.debug("Getting node data")
 
-        tradenodes = r"common\tradenodes\00_tradenodes.txt"
-        positions = r"map\positions.txt"
+        tradenodes = r"common/tradenodes/00_tradenodes.txt"
+        positions = r"map/positions.txt"
 
         modPath = self.modPathComboBox.get()
         modzip = modPath.replace(".mod", ".zip")
