@@ -9,10 +9,10 @@ Created on 21 aug. 2013
 VERSION = "1.1.5"
 
 # TODO: Show countries option: ALL, specific tag
-# TODO: better support for lower resolutions? (e.g. 1280x720)
+# TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
 # TODO: full, tested support for Mac and Linux
 # TODO: Test zip mod support
-# TODO: detect binary file and give appropriate error message
+# TODO: Wait animation during parsing
 
 # DEPENDENDIES:
 # PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
@@ -33,7 +33,6 @@ from math import sqrt
 import Tkinter as tk
 import tkFileDialog
 import tkMessageBox
-import tkFont
 import ttk
 from PIL import Image, ImageTk, ImageDraw
 
@@ -329,8 +328,11 @@ class TradeViz:
         logging.info("Processing save file")
 
         if self.config["savefile"]:
-            self.getTradeData(self.config["savefile"])
-            self.getNodeData()
+            try:
+                self.getTradeData(self.config["savefile"])
+                self.getNodeData()
+            except Exception as e:
+                tkMessageBox.showerror("Can't read file!", "Tradeviz could not understand this file. You might be trying to open an Ironman save, a corrupted save, or a save created with an unsupported mod or game version.")
             try:
                 self.drawMap()
             except InvalidTradeNodeException as e:
