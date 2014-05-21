@@ -12,6 +12,7 @@ VERSION = "1.1.4"
 # TODO: better support for lower resolutions? (e.g. 1280x720)
 # TODO: full, tested support for Mac and Linux
 # TODO: Test zip mod support
+# TODO: detect binary file and give appropriate error message
 
 # DEPENDENDIES:
 # PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
@@ -48,6 +49,7 @@ LinuxDefaultPath = os.path.expanduser("~/Steam/Steamapps/common/Europa Universal
 LIGHT_SLATE = "#36434b"
 DARK_SLATE = "#29343a"
 BTN_BG = "#364555"
+BANNER_BG = "#9E9186"  # TODO: better color?
 
 class TradeViz:
     """Main class for Europa Universalis Trade Visualizer"""
@@ -55,8 +57,9 @@ class TradeViz:
         logging.debug("Initializing application")
         self.root = tk.Tk()
         self.root.configure(background=DARK_SLATE)
-        self.paneHeight = 150
-        self.w, self.h = self.root.winfo_screenwidth() - 15, self.root.winfo_screenheight() - self.paneHeight
+        self.root.overrideredirect(1)
+        self.paneHeight = 195
+        self.w, self.h = self.root.winfo_screenwidth(), self.root.winfo_screenheight() - self.paneHeight
         self.root.title("EU4 Trade Visualizer v%s" % VERSION)
         self.root.bind("<Escape>", lambda x: self.exit("Escape"))
         self.root.wm_protocol("WM_DELETE_WINDOW", lambda: self.exit("Close Window"))
@@ -180,31 +183,39 @@ class TradeViz:
 
         self.canvas = tk.Canvas(self.root, width=self.mapThumbSize[0], height=self.mapThumbSize[1],
                                 highlightthickness=0, border=5, relief="flat", bg=DARK_SLATE)
-        self.canvas.grid(row=0, column=0, columnspan=4, sticky=tk.W)
+        self.canvas.grid(row=1, column=0, columnspan=4, sticky=tk.W, padx=5)
 
         # Labels, entries, checkboxes
 
+        tk.Label(self.root, text="EU4 Trade Visualizer", bg=BANNER_BG, fg="#fff", font=("Cambria", 18, 'bold')).grid(
+                 row=0, column=0, columnspan=4, sticky="WE", padx=10, pady=(10, 0))
+
         tk.Label(self.root, text="Save file:", bg=DARK_SLATE, fg="#fff",
-                 font=("Cambria", 12), anchor="w").grid(row=1, column=0, padx=6, pady=2, sticky="WE")
+                 font=("Cambria", 12), anchor="w").grid(row=2, column=0, padx=6, pady=2, sticky="WE")
         self.saveEntry = tk.Entry(self.root, bd=0, border=0, font=("Cambria", 12), bg=LIGHT_SLATE, fg="white")
         self.saveEntry.config(highlightbackground="red", border=3, relief="flat")
-        self.saveEntry.grid(row=1, column=1, columnspan=2, sticky="WE", padx=6, pady=4, ipady=0)
+        self.saveEntry.grid(row=2, column=1, columnspan=2, sticky="WE", padx=6, pady=4, ipady=0)
 
         tk.Label(self.root, text="Mod:", bg=DARK_SLATE, fg="#fff",
-                 font=("Cambria", 12)).grid(row=2, column=0, padx=(6, 2), pady=2, sticky="W")
+                 font=("Cambria", 12)).grid(row=3, column=0, padx=(6, 2), pady=2, sticky="W")
 
         self.modPathVar = tk.StringVar()
         style = ttk.Style()
         style.element_create("plain.field", "from", "default")
 
-        # TODO: make down arrow button reappear, change colors in dropdown
+        # TODO: change colors in dropdown menu
+        # http://wiki.tcl.tk/37973 says: "I could not find a way to set the listbox hover background and foreground."
+        # -__-
         style.layout("My.TCombobox",
                    [('Combobox.plain.field', {'children': [(
-                       'Combobox.background', {'children': [(
-                           'Combobox.padding', {'children': [(
-                               'Combobox.textarea', {'sticky': 'nswe'})],
-                      'sticky': 'nswe'})], 'sticky': 'nswe'}), ('Combobox.downarrow', {'sticky': 'nse'})],
-                      'border':'0', 'sticky': 'nswe'})])
+                         'Combobox.background', {'children': [(
+                             'Combobox.padding', {'children': [(
+                                 'Combobox.textarea', {'sticky': 'nswe'}
+                              )],
+                          'sticky': 'nswe'})],
+                     'sticky': 'nswe'}),
+                     ('Combobox.downarrow', {'sticky': 'nse'})], 'border':'0', 'sticky': 'nswe'})])
+
         style.map("TCombobox", selectbackground=[('!focus', LIGHT_SLATE), ('focus', LIGHT_SLATE)],
                                selectforeground=[('!focus', "#fff"), ('focus', "#fff")])
         style.configure("My.TCombobox",
@@ -212,15 +223,24 @@ class TradeViz:
                                         foreground="#fff"
                                         )
 
+        listboxstyle = ttk.Style()
+        listboxstyle.configure("TListbox", background="#f00", foreground="#00f")
+        listboxstyle.map("TListbox", selectbackground=[('!focus', LIGHT_SLATE), ('focus', LIGHT_SLATE)],
+                               selectforeground=[('!focus', "#fff"), ('focus', "#fff")])
+        listboxstyle.configure("TListbox",
+                                        background=LIGHT_SLATE,
+                                        foreground="#fff"
+                                        )
+
         self.modPathComboBox = ttk.Combobox(self.root, textvariable=self.modPathVar, values=[""], state="readonly", font=("Cambria", 12), style="My.TCombobox")
-        self.modPathComboBox.grid(row=2, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
+        self.modPathComboBox.grid(row=3, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
         self.modPathVar.trace("w", self.modPathChanged)
 
-        tk.Label(self.root, text="Nodes show:", bg=DARK_SLATE, fg="#fff", font=("Cambria", 12)).grid(row=3, column=0, padx=(6, 2), pady=2, sticky="W")
+        tk.Label(self.root, text="Nodes show:", bg=DARK_SLATE, fg="#fff", font=("Cambria", 12)).grid(row=4, column=0, padx=(6, 2), pady=2, sticky="W")
         self.nodesShowVar = tk.StringVar()
         self.nodesShow = ttk.Combobox(self.root, textvariable=self.nodesShowVar, values=["Local value", "Total value"],
                                       state="readonly", font=("Cambria", 12), style="My.TCombobox")
-        self.nodesShow.grid(row=3, column=1, columnspan=2, sticky=tk.W, padx=6, pady=2)
+        self.nodesShow.grid(row=4, column=1, columnspan=2, sticky=tk.W, padx=6, pady=2)
         self.nodesShowVar.trace("w", self.nodesShowChanged)
 
         self.showZeroVar = tk.IntVar(value=1)
@@ -228,29 +248,29 @@ class TradeViz:
                                          bg=DARK_SLATE, fg="#fff", font=("Cambria", 12), selectcolor=LIGHT_SLATE,
                                          activebackground=DARK_SLATE, activeforeground="#fff",
                                          variable=self.showZeroVar, command=self.toggleShowZeroes)
-        self.showZeroes.grid(row=4, column=0, columnspan=2, sticky=tk.W, padx=6, pady=2)
+        self.showZeroes.grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=6, pady=2)
 
         # Buttons
 
         self.browseFileBtn = tk.Button(self.root, text="Browse...", command=self.browseSave,
                                        bg=BTN_BG, fg="#fff", font=("Cambria", 11), relief="ridge")
-        self.browseFileBtn.grid(row=1, column=3, sticky="WSEN", padx=6, pady=3)
+        self.browseFileBtn.grid(row=2, column=3, sticky="WSEN", padx=6, pady=3)
 
         self.browseModFolderBtn = tk.Button(self.root, text="Browse...", command=self.browseMod,
                                             bg=BTN_BG, fg="#fff", font=("Cambria", 11), relief="ridge")
-        self.browseModFolderBtn.grid(row=2, column=3, sticky="WSEN", padx=6, pady=3, ipady=1)
+        self.browseModFolderBtn.grid(row=3, column=3, sticky="WSEN", padx=6, pady=3, ipady=1)
 
         self.goButton = tk.Button(self.root, text="Go!", command=self.go, bg=BTN_BG, fg="#fff",
                                   font=("Cambria", 11, "bold"), relief="ridge")
-        self.goButton.grid(row=4, column=1, sticky=tk.E , ipadx=20, padx=6, pady=2)
+        self.goButton.grid(row=5, column=1, sticky=tk.E , ipadx=20, padx=6, pady=2)
 
         self.saveImgButton = tk.Button(self.root, text="Save Map", command=self.saveMap, bg=BTN_BG, fg="#fff",
                                        font=("Cambria", 11), relief="ridge")
-        self.saveImgButton.grid(row=4, column=2, sticky=tk.E, padx=6, pady=2)
+        self.saveImgButton.grid(row=5, column=2, sticky=tk.E, padx=6, pady=2)
 
         self.exitButton = tk.Button(self.root, text="Exit", command=lambda: self.exit("Button"),
                                     bg=BTN_BG, fg="#fff", font=("Cambria", 11), relief="ridge")
-        self.exitButton.grid(row=4, column=3, sticky=tk.E + tk.W, padx=6, pady=2)
+        self.exitButton.grid(row=5, column=3, sticky=tk.E + tk.W, padx=6, pady=2)
 
 
     def browseSave(self, event=None):

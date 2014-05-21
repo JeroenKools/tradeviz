@@ -48,6 +48,7 @@ typeLine = Literal("type") + eq + integer
 actualAddedValueLine = Literal("actual_added_value").suppress() + eq + flt
 hasTraderLine = Literal("has_trader") + eq + yesno
 hasCapitalLine = Literal("has_capital") + eq + yesno
+hasSubjectLine = Literal("has_subject") + eq + yesno
 
 modifierSection = Literal("modifier") + eq + begin + \
         Literal("key") + eq + name + \
@@ -70,6 +71,7 @@ powerSection = Literal("power").suppress() + eq + begin + \
                     actualAddedValueLine +
                     hasTraderLine +
                     hasCapitalLine) + \
+                    Optional(hasSubjectLine) + \
                     Optional(modifierSection) + \
                 stop
 
