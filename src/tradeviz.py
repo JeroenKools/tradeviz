@@ -6,7 +6,7 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: better support for lower resolutions? (e.g. 1280x720)
@@ -64,6 +64,7 @@ class TradeViz:
         self.root.title("EU4 Trade Visualizer v%s" % VERSION)
         self.root.bind("<Escape>", lambda x: self.exit("Escape"))
         self.root.wm_protocol("WM_DELETE_WINDOW", lambda: self.exit("Close Window"))
+        self.zeroArrows = []
 
         try:
             self.root.iconbitmap(r"../res/merchant.ico")
@@ -341,10 +342,18 @@ class TradeViz:
         """Turn the display of trade routes with a value of zero on or off"""
 
         logging.debug("Show zeroes toggled")
-
         self.config["showZeroRoutes"] = self.showZeroVar.get()
         self.root.update()
-        self.drawMap()
+
+        if not self.zeroArrows and self.showZeroVar.get():
+            self.drawMap()
+        else:
+            for itemId in self.zeroArrows:
+                if self.showZeroVar.get():
+                    self.canvas.itemconfig(itemId, state="normal")
+                else:
+                    self.canvas.itemconfig(itemId, state="hidden")
+
         self.saveConfig()
 
     def nodesShowChanged(self, *args):
@@ -590,10 +599,11 @@ class TradeViz:
 
         x2, y2 = self.getNodeLocation(fromNode)
         x, y = self.getNodeLocation(toNode)
+        isPacific = self.pacificTrade(x, y, x2, y2)
 
         # adjust for target node radius
         dx = x - x2
-        if self.pacificTrade(x, y, x2, y2):
+        if isPacific:
             if x > x2:
                 dx = x2 - self.mapWidth - x
             else:
@@ -626,62 +636,71 @@ class TradeViz:
                 return
             linecolor = "#ff0"
 
-        if not self.pacificTrade(x, y, x2, y2):
+        if not isPacific:
 
             centerOfLine = ((x + x2) / 2 * ratio, (y + y2) / 2 * ratio)
-
 
             if self.intersectsNode(fromNode, toNode):
                 d = 20
                 centerOfLine = (centerOfLine[0] + d, centerOfLine[1] + d)
-                self.canvas.create_line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
+                z1 = self.canvas.create_line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
                         width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
-                self.canvas.create_line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
+                z2 = self.canvas.create_line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
                         width=lineWidth, fill=linecolor)
 
-                self.mapDraw.line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
+                z3 = self.mapDraw.line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
                         width=lineWidth, fill=linecolor)
-                self.mapDraw.polygon(
+                z4 = self.mapDraw.polygon(
                                         (x * ratio, y * ratio,
                                         (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
                                         (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
                                     ),
                                      outline=linecolor, fill=linecolor)
 
-                self.mapDraw.line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
+                z4 = self.mapDraw.line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
                         width=lineWidth, fill=linecolor)
+
+                if value == 0:
+                    self.zeroArrows += [z1, z2, z3, z4]
 
 
             else:
-                self.canvas.create_line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                z1 = self.canvas.create_line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
                         width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
 
-                self.mapDraw.line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                z2 = self.mapDraw.line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
                         width=lineWidth, fill=linecolor)
 
-                self.mapDraw.polygon(
+                z3 = self.mapDraw.polygon(
                                     (x * ratio, y * ratio,
                                     (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
                                     (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
                                     ),
                                      outline=linecolor, fill=linecolor)
 
-            self.canvas.create_text(centerOfLine, text=int(round(value)), fill="#fff")
-            self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % round(value), fill="#fff")
+                if value == 0:
+                    self.zeroArrows += [z1, z2, z3]
+
+            z5 = self.canvas.create_text(centerOfLine, text=int(round(value)), fill="#fff")
+            z6 = self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % round(value), fill="#fff")
+
+            if value == 0:
+                self.zeroArrows += [z5, z6]
+
 
         else:  # Trade route crosses edge of map
 
             if x < x2:  # Asia to America
-                self.canvas.create_line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
+                z0 = self.canvas.create_line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
                                     width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
-                self.canvas.create_line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                z1 = self.canvas.create_line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
                                     width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
 
-                self.mapDraw.line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
+                z2 = self.mapDraw.line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
                                     width=1, fill=linecolor)
-                self.mapDraw.line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                z3 = self.mapDraw.line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
                                     width=1, fill=linecolor)
-                self.mapDraw.polygon(
+                z4 = self.mapDraw.polygon(
                                         (x * ratio, y * ratio,
                                         (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
                                         (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
@@ -694,18 +713,20 @@ class TradeViz:
                 yf = y2 + f * (y - y2)
 
                 centerOfLine = (x / 2 * ratio, (yf + y) / 2 * ratio)
+                if value == 0:
+                    self.zeroArrows += [z0, z1, z2, z3, z4]
 
             else:  # Americas to Asia
-                self.canvas.create_line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
+                z0 = self.canvas.create_line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
                                     width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
-                self.canvas.create_line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                z1 = self.canvas.create_line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
                                     width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
 
-                self.mapDraw.line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
+                z2 = self.mapDraw.line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
                                     width=1, fill=linecolor)
-                self.mapDraw.line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
+                z3 = self.mapDraw.line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
                                     width=1, fill=linecolor)
-                self.mapDraw.polygon(
+                z4 = self.mapDraw.polygon(
                                         (x * ratio, y * ratio,
                                         (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
                                         (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
@@ -717,8 +738,11 @@ class TradeViz:
 
                 centerOfLine = ((self.mapWidth + x) / 2 * ratio, (yf + y) / 2 * ratio)
 
-            self.canvas.create_text(centerOfLine, text=int(value), fill="#fff")
-            self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % value, fill="#fff")
+            z5 = self.canvas.create_text(centerOfLine, text=int(value), fill="#fff")
+            z6 = self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % value, fill="#fff")
+
+            if value == 0:
+                self.zeroArrows += [z0, z1, z2, z3, z4, z5, z6]
 
     def drawMap(self):
         """Top level method for redrawing the world map and trade network"""
@@ -732,19 +756,20 @@ class TradeViz:
         self.drawImg = self.mapImg.convert("RGB")
         self.mapDraw = ImageDraw.Draw(self.drawImg)
         ratio = self.ratio
+        self.zeroArrows = []
 
         # draw incoming trade arrows
+        t1 = time.time()
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
 
             data = self.nodeData[node[0]]
 
             if "incomingValue" in data:
-                for i in range(len(data["incomingValue"])):
+                for i, value in enumerate(data["incomingValue"]):
                     fromNodeNr = data["incomingFromNode"][i]
-
-                    value = data["incomingValue"][i]
                     self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data))
+        logging.debug("Drew arrows in %.2fs" % (time.time() - t1))
 
         # draw trade nodes and their current value
         for n, node in enumerate(self.tradenodes):
