@@ -6,7 +6,7 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.1.5"
+VERSION = "1.2.0"
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
@@ -38,6 +38,7 @@ from PIL import Image, ImageTk, ImageDraw
 
 # Tradeviz components
 from TradeGrammar import tradeSection
+import pyparsing
 
 # globals
 provinceBMP = "../res/worldmap.gif"
@@ -54,10 +55,11 @@ BANNER_BG = "#9E9186"  # TODO: better color?
 class TradeViz:
     """Main class for Europa Universalis Trade Visualizer"""
     def __init__(self):
+        logging.basicConfig(filename="tradeviz.log", level=logging.DEBUG, format="[%(asctime)s] %(levelname)s: %(message)s", datefmt="%Y/%m/%d %H:%M:%S", filemode="w")
         logging.debug("Initializing application")
         self.root = tk.Tk()
         self.root.configure(background=DARK_SLATE)
-        self.root.overrideredirect(1)
+        # self.root.overrideredirect(1)
         self.paneHeight = 195
         self.w, self.h = self.root.winfo_screenwidth(), self.root.winfo_screenheight() - self.paneHeight
         self.root.title("EU4 Trade Visualizer v%s" % VERSION)
@@ -92,7 +94,7 @@ class TradeViz:
         self.root.grid_columnconfigure(1, weight=1)
         self.getConfig()
 
-        self.root.focus_set()
+        # self.root.focus_set()
         logging.debug("Entering main loop")
         self.root.mainloop()
 
@@ -332,7 +334,12 @@ class TradeViz:
                 self.getTradeData(self.config["savefile"])
                 self.getNodeData()
             except Exception as e:
-                tkMessageBox.showerror("Can't read file!", "Tradeviz could not understand this file. You might be trying to open an Ironman save, a corrupted save, or a save created with an unsupported mod or game version.")
+                msg = "Tradeviz could not understand this file. You might be trying to open an Ironman save, a corrupted save, or a save created with an unsupported mod or game version"
+                if type(e) == pyparsing.ParseException:
+                    print e.line
+                    print " "*(e.column - 1) + "^"
+                    print e
+                tkMessageBox.showerror("Can't read file!", msg)
             try:
                 self.drawMap()
             except InvalidTradeNodeException as e:
