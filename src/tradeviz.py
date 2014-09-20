@@ -93,6 +93,8 @@ class TradeViz:
         self.drawMap()
         self.root.grid_columnconfigure(1, weight=1)
         self.getConfig()
+
+        # self.root.focus_set()
         logging.debug("Entering main loop")
         self.root.mainloop()
 
@@ -339,9 +341,12 @@ class TradeViz:
                     print e.line
                     print " "*(e.column - 1) + "^"
                     print e
+<<<<<<< HEAD
                     msg += str(e)
                 elif type(e) == IndexError:
                     pass #
+=======
+>>>>>>> refs/remotes/origin/master
                 tkMessageBox.showerror("Can't read file!", msg)
             try:
                 self.drawMap()
