@@ -6,7 +6,7 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
