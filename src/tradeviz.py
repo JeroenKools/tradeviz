@@ -336,15 +336,15 @@ class TradeViz:
                 self.getTradeData(self.config["savefile"])
                 self.getNodeData()
             except Exception as e:
-                msg = "Tradeviz could not understand this file. You might be trying to open an Ironman save, a corrupted save, or a save created with an unsupported mod or game version"
+                msg = "Tradeviz could not understand this file. You might be trying to open an Ironman save, a corrupted save, or a save created with an unsupported mod or game version. "
                 if type(e) == pyparsing.ParseException:
                     print e.line
                     print " "*(e.column - 1) + "^"
                     print e
 
-                    msg += str(e)
+                    msg += "Error: " + str(e)
                 elif type(e) == IndexError:
-                    pass #
+                    print e
 
                 tkMessageBox.showerror("Can't read file!", msg)
             try:
@@ -400,7 +400,7 @@ class TradeViz:
         with open(savepath) as f:
             txt = f.read()
             txt = txt.split("trade=")[1]
-            txt = txt.split("production_leader=")[0]
+            txt = txt.split("production_leader")[0]
 
         logging.info("Parsing %i chars" % len(txt))
         t0 = time.time()

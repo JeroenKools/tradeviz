@@ -68,7 +68,7 @@ transferredToIndexSection = Literal("transfered_to_index").suppress() + eq + \
     begin + OneOrMore(integer) + stop
 transferredToValueSection = Literal("transfered_to_value").suppress() + eq + \
     begin + OneOrMore(flt) + stop
-privateerMissionLine = Literal("privateer_mission").suppress() + eq + integer
+privateerMissionLine = Literal("privateer_mission").suppress() + eq + flt
 
 powerSection = Literal("power").suppress() + eq + begin + \
                 (
