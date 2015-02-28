@@ -6,7 +6,7 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.2.1"
+VERSION = "1.3.0" # El Dorado, 1.10.1
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
@@ -90,6 +90,7 @@ class TradeViz:
         self.tradenodes = []
         self.player = ""
         self.date = ""
+        self.preTradeSectionLines = 0
         self.drawMap()
         self.root.grid_columnconfigure(1, weight=1)
         self.getConfig()
@@ -152,8 +153,8 @@ class TradeViz:
                 key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, WinRegKey)
                 i = 0
                 while 1:
-                    name, val, _type = _winreg.EnumValue(key, i)
-                    if name == "InstallLocation":
+                    quotedName, val, _type = _winreg.EnumValue(key, i)
+                    if quotedName == "InstallLocation":
                         logging.info("Found install dir in Windows registry: %s" % val)
                         self.config["installDir"] = val
                         break
@@ -338,6 +339,7 @@ class TradeViz:
             except Exception as e:
                 msg = "Tradeviz could not understand this file. You might be trying to open an Ironman save, a corrupted save, or a save created with an unsupported mod or game version. "
                 if type(e) == pyparsing.ParseException:
+                    print "----------------------------"
                     print e.line
                     print " "*(e.column - 1) + "^"
                     print e
@@ -345,6 +347,7 @@ class TradeViz:
                     msg += "Error: " + str(e)
                 elif type(e) == IndexError:
                     print e
+                    print ("+" + self.preTradeSectionLines)
 
                 tkMessageBox.showerror("Can't read file!", msg)
             try:
@@ -399,14 +402,17 @@ class TradeViz:
         logging.debug("Reading save file %s" % os.path.basename(savepath))
         with open(savepath) as f:
             txt = f.read()
-            txt = txt.split("trade=")[1]
-            txt = txt.split("production_leader")[0]
+            txt = txt.split("trade=")
+            self.preTradeSectionLines = txt[0].count("\n")
 
-        logging.info("Parsing %i chars" % len(txt))
+            tradesection = txt[1]                                       # drop part before trade section starts
+            tradesection = tradesection.split("production_leader")[0]   # drop the part after the end
+
+        logging.info("Parsing %i chars" % len(tradesection))
         t0 = time.time()
 
         logging.debug("Parsing trade section...")
-        result = tradeSection.parseString(txt)
+        result = tradeSection.parseString(tradesection)
         d = result.asDict()
         r = {}
 
@@ -433,7 +439,7 @@ class TradeViz:
             d = n.asDict()
             node = {}
             for k in d:
-                if k not in ["name" , "incomingFromNode", "incomingValue"]:
+                if k not in ["quotedName" , "incomingFromNode", "incomingValue"]:
                     node[k] = d[k]
                 elif k in ["incomingFromNode", "incomingValue"]:
                     node[k] = d[k].asList()
@@ -445,7 +451,7 @@ class TradeViz:
                 if k == "incomingValue":
                     self.maxIncoming = max(self.maxIncoming, *d[k].asList())
 
-            r[d["name"][0]] = node
+            r[d["quotedName"][0]] = node
 
         try:
             logging.debug("Seville:\n\t%s" % r["sevilla"])
@@ -776,6 +782,7 @@ class TradeViz:
 
         # draw incoming trade arrows
         t1 = time.time()
+
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
 

@@ -15,12 +15,13 @@ begin = Literal("{").suppress()
 stop = Literal("}").suppress()
 quote = Literal('"').suppress()
 
-name = quote + Word(alphas, alphas + nums + "_") + quote
+name = Word(alphas, alphas + nums + "_")
+quotedName = quote + name + quote
 yesno = Literal("yes") | Literal("no")
 flt = Word(nums + ".-").setParseAction(lambda s, l, t: float(t[0]))
 integer = Word(nums).setParseAction((lambda s, l, t: int(t[0])))
 
-definitionsLine = Literal("definitions").suppress() + eq + name.setResultsName("name")
+definitionsLine = Literal("definitions").suppress() + eq + quotedName.setResultsName("quotedName")
 currentLine = Literal("current").suppress() + eq + flt.setResultsName("currentValue")
 localValueLine = Literal("local_value").suppress() + eq + flt.setResultsName("localValue")
 outgoingLine = Literal("outgoing").suppress() + eq + flt.setResultsName("outgoing")
@@ -28,24 +29,24 @@ valueAddedOutgoingLine = (Literal("value_added_outgoing") + eq + flt).suppress()
 retentionLine = (Literal("retention") + eq + flt).suppress()
 steerPowerLine = (Literal("steer_power") + eq + flt).suppress()
 totalLine = (Literal("total").suppress() + eq + flt).suppress()  # total trade power
-provincePowerLine = (Literal("province_power").suppress() + eq + flt).suppress()
+provincePower = Word("p_pow") ^ Word("province_power")
+provincePowerLine = (provincePower + eq + flt).suppress()
 maxLine = (Literal("max") + eq + flt).suppress()
 collectorPowerLine = (Literal("collector_power") + eq + flt).suppress()
 pullPowerLine = (Literal("pull_power") + eq + flt).suppress()
 retainPowerLine = (Literal("retain_power") + eq + flt).suppress()
 highestPowerLine = (Literal("highest_power") + eq + flt).suppress()
+pirateHuntLine = (Literal("pirate_hunt") + eq + flt).suppress()
 valueLine = Literal("value").suppress() + eq + flt.setResultsName("incomingValue", True)
 fromLine = Literal("from").suppress() + eq + integer.setResultsName("incomingFromNode", True)
 
-countryLine = Literal("country") + eq + name
+countryLine = Literal("country") + eq + quotedName
 prevLine = Literal("prev") + eq + flt
 maxPowerLine = Literal("max_power") + eq + flt
-provincePowerLine = Literal("province_power") + eq + flt
 shipPowerLine = Literal("ship_power") + eq + flt
 powerFractionLine = Literal("power_fraction") + eq + flt
 powerFractionPushLine = Literal("power_fraction_push") + eq + flt
 moneyLine = Literal("money") + eq + flt
-steerPowerLine = Literal("steer_power") + eq + flt
 typeLine = Literal("type") + eq + integer
 actualAddedValueLine = Literal("actual_added_value").suppress() + eq + flt
 hasTraderLine = Literal("has_trader") + eq + yesno
@@ -53,7 +54,7 @@ hasCapitalLine = Literal("has_capital") + eq + yesno
 hasSubjectLine = Literal("has_subject") + eq + yesno
 
 modifierSection = Literal("modifier") + eq + begin + \
-        Literal("key") + eq + name + \
+        Literal("key") + eq + quotedName + \
         Literal("duration") + eq + integer + \
         Literal("power") + eq + flt + stop
 
@@ -96,8 +97,42 @@ powerSection = Literal("power").suppress() + eq + begin + \
                     Optional(transferredToValueSection) +
                     Optional(transferredFromIndexSection) +
                     Optional(transferredFromValueSection) +
-                    Optional(modifierSection)) + \
-                stop
+                    Optional(modifierSection)
+                ) + stop
+
+valLine = Literal("val") + eq + flt
+maxPowLine = Literal("max_pow") + eq + flt
+maxDemandLine = Literal("max_demand") + eq + flt
+addLine = Literal("add") + eq + flt
+tInLine = Literal("t_in") + eq + flt
+tOutLine = Literal("t_out") + eq + flt
+tFromSection = Literal("t_from") + eq + begin + OneOrMore(name + eq + flt) + stop
+tToSection = Literal("t_to") + eq + begin + OneOrMore(name + eq + flt) + stop
+
+# new (AOW or ED?) format for a country's power in a node
+countryPowerSection = name + eq + begin + \
+                    (
+                       typeLine +
+                       Optional(valLine) +
+                       Optional(prevLine) +
+                       Optional(maxPowLine) +
+                       maxDemandLine +
+                       Optional(provincePowerLine) +
+                       Optional(shipPowerLine) +
+                       Optional(powerFractionLine) +
+                       Optional(moneyLine) +
+                       Optional(totalLine) +
+                       Optional(steerPowerLine) +
+                       Optional(addLine) +
+                       Optional(hasTraderLine) +
+                       Optional(hasCapitalLine) +
+                       Optional(lightShipLine) +
+                       Optional(tInLine) +
+                       Optional(tOutLine) +
+                       Optional(tToSection) +
+                       Optional(tFromSection) +
+                       Optional(modifierSection)
+                    ) + stop
 
 tradegoodSection = Literal("trade_goods_size").suppress() + eq + begin + \
     OneOrMore(flt) + stop
@@ -105,9 +140,12 @@ tradegoodSection = Literal("trade_goods_size").suppress() + eq + begin + \
 incomingSection = (Literal("incoming").suppress() + eq + begin + \
     actualAddedValueLine + valueLine + fromLine + stop)
 
-topProvincesSection = Literal("top_provinces").suppress() + eq + begin + OneOrMore(name) + stop
+newIncomingSection = (Literal("incoming").suppress() + eq + begin +
+                        addLine + valueLine + fromLine + stop)
+
+topProvincesSection = Literal("top_provinces").suppress() + eq + begin + OneOrMore(quotedName | name) + stop
 topProvincesValuesSection = Literal("top_provinces_values").suppress() + eq + begin + OneOrMore(flt) + stop
-topPowerSection = Literal("top_power").suppress() + eq + begin + OneOrMore(name) + stop
+topPowerSection = Literal("top_power").suppress() + eq + begin + OneOrMore(quotedName | name) + stop
 topPowerValuesSection = Literal("top_power_values").suppress() + eq + begin + OneOrMore(flt) + stop
 tradeCompanyRegionLine = Literal("trade_company_region").suppress() + eq + yesno
 
@@ -126,8 +164,11 @@ nodeSection = (Literal("node").suppress() + eq + begin + \
                 pullPowerLine +
                 retainPowerLine +
                 highestPowerLine +
-                ZeroOrMore(powerSection).suppress() +
+                Optional(pirateHuntLine) +
+                ZeroOrMore(powerSection) +
+                ZeroOrMore(countryPowerSection) +
                 ZeroOrMore(incomingSection) +
+                ZeroOrMore(newIncomingSection) +
                 Optional(tradegoodSection) + # Western Europe has no trade goods!
                 Optional(topProvincesSection) +
                 Optional(topProvincesValuesSection) +
