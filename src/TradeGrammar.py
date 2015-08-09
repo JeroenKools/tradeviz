@@ -19,7 +19,7 @@ name = Word(alphas, alphas + nums + "_")
 quotedName = quote + name + quote
 yesno = Literal("yes") | Literal("no")
 flt = Word(nums + ".-").setParseAction(lambda s, l, t: float(t[0]))
-integer = Word(nums).setParseAction((lambda s, l, t: int(t[0])))
+integer = Word(nums + "-").setParseAction((lambda s, l, t: int(t[0])))
 
 definitionsLine = Literal("definitions").suppress() + eq + quotedName.setResultsName("quotedName")
 currentLine = Literal("current").suppress() + eq + flt.setResultsName("currentValue")
@@ -127,8 +127,8 @@ countryPowerSection = name + eq + begin + \
                        Optional(hasTraderLine) +
                        Optional(hasCapitalLine) +
                        Optional(lightShipLine) +
-                       Optional(tInLine) +
                        Optional(tOutLine) +
+                       Optional(tInLine) +
                        Optional(tToSection) +
                        Optional(tFromSection) +
                        Optional(modifierSection)

@@ -6,8 +6,6 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-VERSION = "1.3.0" # El Dorado, 1.10.1
-
 # TODO: Show countries option: ALL, specific tag
 # TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
 # TODO: full, tested support for Mac and Linux
@@ -28,6 +26,7 @@ import sys
 import json
 import zipfile
 from math import sqrt
+from distutils import version
 
 # GUI stuff
 import Tkinter as tk
@@ -52,17 +51,21 @@ DARK_SLATE = "#29343a"
 BTN_BG = "#364555"
 BANNER_BG = "#9E9186"  # TODO: better color?
 
+VERSION = "1.4.0"
+COMPATIBILITY_VERSION = version.LooseVersion("1.12.2") # EU4 version
+APP_NAME = "EU4 Trade Visualizer"
+
+
 class TradeViz:
     """Main class for Europa Universalis Trade Visualizer"""
     def __init__(self):
-        logging.basicConfig(filename="tradeviz.log", level=logging.DEBUG, format="[%(asctime)s] %(levelname)s: %(message)s", datefmt="%Y/%m/%d %H:%M:%S", filemode="w")
         logging.debug("Initializing application")
         self.root = tk.Tk()
         self.root.configure(background=DARK_SLATE)
         # self.root.overrideredirect(1)
         self.paneHeight = 195
         self.w, self.h = self.root.winfo_screenwidth(), self.root.winfo_screenheight() - self.paneHeight
-        self.root.title("EU4 Trade Visualizer v%s" % VERSION)
+        self.root.title("%s v%s" % (APP_NAME, VERSION))
         self.root.bind("<Escape>", lambda x: self.exit("Escape"))
         self.root.wm_protocol("WM_DELETE_WINDOW", lambda: self.exit("Close Window"))
         self.zeroArrows = []
@@ -99,6 +102,7 @@ class TradeViz:
         logging.debug("Entering main loop")
         self.root.mainloop()
 
+
     def getConfig(self):
         """Retrieve settings from config file"""
 
@@ -134,6 +138,7 @@ class TradeViz:
 
         self.saveConfig()
 
+
     def saveConfig(self):
         """Store settings in config file"""
 
@@ -141,6 +146,7 @@ class TradeViz:
 
         with open(r"../tradeviz.cfg", "w") as f:
             json.dump(self.config, f)
+
 
     def getInstallDir(self):
         """Find the EU4 install path and store it in the config for later use"""
@@ -182,6 +188,7 @@ class TradeViz:
             folder = tkFileDialog.askdirectory(initialdir="/")
             if os.path.exists(os.path.join(folder, "common")):
                 self.config["installDir"] = folder
+
 
     def setupGUI(self):
         """Initialize the user interface elements"""
@@ -296,6 +303,7 @@ class TradeViz:
         self.saveEntry.delete(0, tk.END)
         self.saveEntry.insert(0, self.config["savefile"])
 
+
     def browseMod(self, event=None):
 
         logging.debug("Browsing for mod")
@@ -327,17 +335,31 @@ class TradeViz:
 
         self.config["lastModPath"] = modpath
 
+
     def go(self, event=None):
         """Start parsing the selected save file and show the results on the map"""
 
         logging.info("Processing save file")
 
         if self.config["savefile"]:
+
             try:
-                self.getTradeData(self.config["savefile"])
+                txt = self.getSaveText()
+            except ReadError as e:
+                logging.error("Failed to get savefile text: " + e.message)
+                tkMessageBox.showerror("Can't read file!", "This save file %s and can't be processed by %s" % (e.message, APP_NAME))
+                self.drawMap()
+                return
+
+            try:
+                tradesection = txt[1]                                       # drop part before trade section starts
+                tradesection = tradesection.split("production_leader")[0]   # drop the part after the end
+                self.getTradeData(tradesection)
                 self.getNodeData()
+                print "successfully parsed save file!"
             except Exception as e:
-                msg = "Tradeviz could not understand this file. You might be trying to open an Ironman save, a corrupted save, or a save created with an unsupported mod or game version. "
+                msg = "Tradeviz could not parse this file. You might be trying to open a corrupted save," + \
+                      "or a save created with an unsupported mod or game version."
                 if type(e) == pyparsing.ParseException:
                     print "----------------------------"
                     print e.line
@@ -346,16 +368,82 @@ class TradeViz:
 
                     msg += "Error: " + str(e)
                 elif type(e) == IndexError:
-                    print e
-                    print ("+" + self.preTradeSectionLines)
+                    print e.message
+                    print ("+" + str(self.preTradeSectionLines))
 
+                logging.error(e)
                 tkMessageBox.showerror("Can't read file!", msg)
+
             try:
                 self.drawMap()
             except InvalidTradeNodeException as e:
                 logging.error("Invalid trade node index: %s" % e)
                 tkMessageBox.showerror("Error", "Save file contains invalid trade node info. " +
                        "If your save is from a modded game, please indicate the mod folder and try again.")
+
+
+    def getSaveText(self):
+        """Extract the text from the selected save file"""
+
+        self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2),
+                                text="Please wait... Save file is being processed...", fill="white")
+        self.root.update()
+        logging.debug("Reading save file %s" % os.path.basename(self.config["savefile"]))
+
+        with open(self.config["savefile"]) as f:
+            txt = f.read()
+
+            txt = self.checkForCompression(txt)
+            self.checkForIronMan(txt)
+            self.checkForVersion(txt)
+
+            if not txt.startswith("EU4txt"):
+                logging.error("Savefile starts with %s, not EU4txt" % txt[:10])
+                raise ReadError("appears to be in an invalid format")
+
+
+            for line in txt[:2000].split("\n"):
+                if "=" in line:
+                    key, val = line.split("=")
+                    if key == "date":
+                        self.date = val.strip('" \n')
+                    elif key == "player":
+                        self.player = val.strip('" \n')
+                    elif key == "speed":
+                        break
+
+            txt = txt.split("trade=")
+            self.preTradeSectionLines = txt[0].count("\n")
+
+        return txt
+
+    def checkForIronMan(self, txt):
+        if txt.startswith("EU4binM"):
+            raise ReadError("appears to be an Ironman save")
+
+    def checkForCompression(self, txt):
+        """Check whether the save file text is compressed. If so, return uncompressed text, otherwise return the text unchanged"""
+        if txt[:2] == "PK":
+            logging.info("Save file is compressed, unzipping...")
+            zippedSave = zipfile.ZipFile(self.config["savefile"])
+            unzippedSave = zippedSave.open(os.path.basename(self.config["savefile"]))
+            txt = unzippedSave.read()
+            return txt
+        else:
+            return txt
+
+    def checkForVersion(self, txt):
+        versionTuple = re.findall("first=(\d+)\s+second=(\d+)\s+third=(\d+)", txt[:500])
+        if versionTuple == []:
+            logging.warning("Could not find version info!")
+        else:
+            versionTuple = versionTuple[0]
+            saveVersion = version.LooseVersion("%s.%s.%s" % versionTuple)
+            logging.info("Savegame version is %s" % saveVersion)
+            if saveVersion > COMPATIBILITY_VERSION:
+                tkMessageBox.showwarning("Version warning", ("This savegame is from an a newer EU4 version (%s) than " + \
+                                                "the version this tool designed to work for (%s). " + \
+                                                "It might not work correctly!") % (saveVersion.vstring, COMPATIBILITY_VERSION.vstring))
 
     def toggleShowZeroes(self, event=None):
         """Turn the display of trade routes with a value of zero on or off"""
@@ -375,12 +463,15 @@ class TradeViz:
 
         self.saveConfig()
 
+
     def nodesShowChanged(self, *args):
         self.config["nodesShow"] = self.nodesShowVar.get()
         self.drawMap()
 
+
     def modPathChanged(self, *args):
         self.config["lastModPath"] = self.modPathVar.get()
+
 
     def exit(self, arg=""):
         """Close the program"""
@@ -391,41 +482,18 @@ class TradeViz:
         logging.shutdown()
         self.root.quit()
 
-    def getTradeData(self, savepath):
+
+    def getTradeData(self, tradesection):
         """Extract the trade data from the selected save file"""
-
-        logging.debug("Getting trade data")
-
-        self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2),
-                                text="Please wait... Save file is being processed...", fill="white")
-        self.root.update()
-        logging.debug("Reading save file %s" % os.path.basename(savepath))
-        with open(savepath) as f:
-            txt = f.read()
-            txt = txt.split("trade=")
-            self.preTradeSectionLines = txt[0].count("\n")
-
-            tradesection = txt[1]                                       # drop part before trade section starts
-            tradesection = tradesection.split("production_leader")[0]   # drop the part after the end
 
         logging.info("Parsing %i chars" % len(tradesection))
         t0 = time.time()
 
         logging.debug("Parsing trade section...")
-        result = tradeSection.parseString(tradesection)
+        # pydev thinks tradeSection.parseString is an undefined import, but it's not
+        result = tradeSection.parseString(tradesection) # @UndefinedVariable
         d = result.asDict()
         r = {}
-
-        with open(savepath) as f:
-            for line in f:
-                if "=" in line:
-                    key, val = line.split("=")
-                    if key == "date":
-                        self.date = val.strip('" \n')
-                    elif key == "player":
-                        self.player = val.strip('" \n')
-                    elif key == "speed":
-                        break
 
         logging.info("Finished parsing save in %.3f seconds" % (time.time() - t0))
 
@@ -462,9 +530,11 @@ class TradeViz:
 
         self.nodeData = r
 
+
     def getNodeName(self, nodeID):
         node = self.tradenodes[nodeID - 1]
         return node[0]
+
 
     def getNodeLocation(self, nodeID):
         if nodeID > len(self.tradenodes) + 1:
@@ -476,6 +546,7 @@ class TradeViz:
         for loc in self.provinceLocations:
             if loc[0] == provinceID:
                 return loc[1:]
+
 
     def getNodeData(self):
         """Retrieve trade node and province information from the game or mod files"""
@@ -521,9 +592,10 @@ class TradeViz:
                 with open(tradenodesfile, "r") as f:
                     txt = f.read()
         except IOError as e:
-            logging.critical("Could not o trade nodes file: %s" % e)
+            logging.critical("Could not find trade nodes file: %s" % e)
 
-        tradenodes = re.findall(r"(\w+)=\s*{\s*location=(\d+)", txt)
+        tradenodes = re.findall(r"(\w+)\s*=\s*{\s*location=(\d+)", txt)
+        logging.info("%i tradenodes found in %i chars" % (len(tradenodes), len(txt)))
 
         for i in range(len(tradenodes)):
             a, b = tradenodes[i]
@@ -532,7 +604,6 @@ class TradeViz:
         self.tradenodes = tradenodes
 
         # Now get province positions
-
         try:
             if modType == "zip":
                 z = zipfile.ZipFile(modzip)
@@ -568,6 +639,8 @@ class TradeViz:
             locations[i] = (int(a), float(b), self.mapHeight - float(c))  # invert y coordinate :)
 
         self.provinceLocations = locations
+        logging.info("Found %i province locations" % len(self.provinceLocations))
+
 
     def getNodeRadius(self, node):
         """Calculate the radius for a trade node given its value"""
@@ -580,6 +653,7 @@ class TradeViz:
             logging.error("Invalid nodesShow option: %s" % self.config["nodesShow"])
 
         return 5 + int(7 * value)
+
 
     def intersectsNode(self, node1, node2):
         """Check whether a trade route intersects a trade node circle (other than source and target nodes)
@@ -615,6 +689,7 @@ class TradeViz:
                     logging.debug("%s is intersected by a trade route between %s and %s" %
                                   (self.getNodeName(n + 1), self.getNodeName(node1), self.getNodeName(node2)))
                     return True
+
 
     def drawArrow(self, fromNode, toNode, value, toRadius):
         """Draw an arrow between two nodes on the map"""
@@ -766,6 +841,7 @@ class TradeViz:
             if value == 0:
                 self.zeroArrows += [z0, z1, z2, z3, z4, z5, z6]
 
+
     def drawMap(self):
         """Top level method for redrawing the world map and trade network"""
 
@@ -782,19 +858,28 @@ class TradeViz:
 
         # draw incoming trade arrows
         t1 = time.time()
+        nArrows = 0
 
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
 
-            data = self.nodeData[node[0]]
+            try:
+                data = self.nodeData[node[0]]
 
-            if "incomingValue" in data:
-                for i, value in enumerate(data["incomingValue"]):
-                    fromNodeNr = data["incomingFromNode"][i]
-                    self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data))
-        logging.debug("Drew arrows in %.2fs" % (time.time() - t1))
+                if "incomingValue" in data:
+                    for i, value in enumerate(data["incomingValue"]):
+                        fromNodeNr = data["incomingFromNode"][i]
+                        self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data))
+                        nArrows += 1
+            except KeyError:
+                logging.error("Encountered unknown trade node %s!" % node[0])
+                tkMessageBox.showerror("Error", "An invalid trade node was encountered. Savegame doesn't match" +
+                                       " currently installed EU4 version, or incorrect mod selected.")
+                return
+        logging.debug("Drew %i arrows in %.2fs" % (nArrows, time.time() - t1))
 
         # draw trade nodes and their current value
+        nNodes = 0
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
 
@@ -817,6 +902,8 @@ class TradeViz:
             self.mapDraw.ellipse((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
                                     outline=tradeNodeColor, fill=tradeNodeColor)
             self.mapDraw.text((x * ratio - 3 * digits, y * ratio - 4), "%d" % v, fill="#fff")
+            nNodes += 1
+        logging.debug("Drew %i nodes" % nNodes)
 
         self.canvas.create_text((10, self.mapHeight * ratio - 40), anchor="nw",
                                 text="Player: %s" % self.player, fill="white")
@@ -829,6 +916,7 @@ class TradeViz:
 
         logging.info("Finished drawing map in %.3f seconds" % (time.time() - t0))
 
+
     def pacificTrade(self, x, y , x2, y2):
         """Check whether a line goes around the east/west edge of the map"""
 
@@ -838,7 +926,10 @@ class TradeViz:
 
         return (distAcross < directDist)
 
+
     def saveMap(self):
+        """Export the current map as a .gif image"""
+
         logging.info("Saving map image...")
 
         savename = tkFileDialog.asksaveasfilename(defaultextension=".gif", filetypes=[("GIF file", ".gif")], initialdir=os.path.expanduser("~"),
@@ -851,16 +942,30 @@ class TradeViz:
                 logging.error("Problem saving map image: %s" % e)
 
 
+
 def sign(self, v):
     if v < 0:
         return -1
     else:
         return 1
 
+
+
 class InvalidTradeNodeException(Exception):
-    def InvalidTradeNodeException(self, msg):
+    def __init__(self, msg):
         Exception.__init__(self)
         self.message = msg
+
+class ReadError(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self)
+        self.message = msg
+
+class ParseError(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self)
+        self.message = msg
+
 
 if __name__ == "__main__":
 
@@ -870,6 +975,8 @@ if __name__ == "__main__":
         if arg in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
             debuglevel = eval("logging." + arg)
 
-    logging.basicConfig(filename="tradeviz.log", filemode="w", level=debuglevel, format='%(levelname)s: %(message)s')
+    logging.basicConfig(filename="tradeviz.log", filemode="w", level=debuglevel,
+                        format="[%(asctime)s] %(levelname)s: %(message)s",
+                        datefmt="%Y/%m/%d %H:%M:%S")
 
     tv = TradeViz()
