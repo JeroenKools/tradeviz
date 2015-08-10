@@ -19,7 +19,9 @@ name = Word(alphas, alphas + nums + "_")
 quotedName = quote + name + quote
 yesno = Literal("yes") | Literal("no")
 flt = Word(nums + ".-").setParseAction(lambda s, l, t: float(t[0]))
-integer = Word(nums + "-").setParseAction((lambda s, l, t: int(t[0])))
+integer = Word(nums + "-").setParseAction(lambda s, l, t: int(t[0]))
+intList = begin + OneOrMore(integer) + stop
+floatList = begin + OneOrMore(flt) + stop
 
 definitionsLine = Literal("definitions").suppress() + eq + quotedName.setResultsName("quotedName")
 currentLine = Literal("current").suppress() + eq + flt.setResultsName("currentValue")
@@ -61,14 +63,10 @@ modifierSection = Literal("modifier") + eq + begin + \
 lightShipLine = Literal("light_ship").suppress() + eq + integer
 transferredOutLine = Literal("transferred_out").suppress() + eq + flt
 transferredInLine = Literal("transferred_in").suppress() + eq + flt
-transferredFromIndexSection = Literal("transfered_from_index").suppress() + eq + \
-    begin + OneOrMore(integer) + stop
-transferredFromValueSection = Literal("transfered_from_value").suppress() + eq + \
-    begin + OneOrMore(flt) + stop
-transferredToIndexSection = Literal("transfered_to_index").suppress() + eq + \
-    begin + OneOrMore(integer) + stop
-transferredToValueSection = Literal("transfered_to_value").suppress() + eq + \
-    begin + OneOrMore(flt) + stop
+transferredFromIndexSection = Literal("transfered_from_index").suppress() + eq + intList
+transferredFromValueSection = Literal("transfered_from_value").suppress() + eq + floatList
+transferredToIndexSection = Literal("transfered_to_index").suppress() + eq + intList
+transferredToValueSection = Literal("transfered_to_value").suppress() + eq + floatList
 privateerMissionLine = Literal("privateer_mission").suppress() + eq + flt
 
 powerSection = Literal("power").suppress() + eq + begin + \
@@ -144,9 +142,9 @@ newIncomingSection = (Literal("incoming").suppress() + eq + begin +
                         addLine + valueLine + fromLine + stop)
 
 topProvincesSection = Literal("top_provinces").suppress() + eq + begin + OneOrMore(quotedName | name) + stop
-topProvincesValuesSection = Literal("top_provinces_values").suppress() + eq + begin + OneOrMore(flt) + stop
+topProvincesValuesSection = Literal("top_provinces_values").suppress() + eq + floatList
 topPowerSection = Literal("top_power").suppress() + eq + begin + OneOrMore(quotedName | name) + stop
-topPowerValuesSection = Literal("top_power_values").suppress() + eq + begin + OneOrMore(flt) + stop
+topPowerValuesSection = Literal("top_power_values").suppress() + eq + floatList
 tradeCompanyRegionLine = Literal("trade_company_region").suppress() + eq + yesno
 
 nodeSection = (Literal("node").suppress() + eq + begin + \

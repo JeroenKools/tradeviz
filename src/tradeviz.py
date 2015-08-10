@@ -38,6 +38,7 @@ from PIL import Image, ImageTk, ImageDraw
 # Tradeviz components
 from TradeGrammar import tradeSection
 import pyparsing
+import NodeGrammar
 
 # globals
 provinceBMP = "../res/worldmap.gif"
@@ -51,8 +52,8 @@ DARK_SLATE = "#29343a"
 BTN_BG = "#364555"
 BANNER_BG = "#9E9186"  # TODO: better color?
 
-VERSION = "1.4.0"
-COMPATIBILITY_VERSION = version.LooseVersion("1.12.2") # EU4 version
+VERSION = "1.4.1"
+COMPATIBILITY_VERSION = version.LooseVersion("1.13.0") # EU4 version
 APP_NAME = "EU4 Trade Visualizer"
 
 
@@ -61,6 +62,7 @@ class TradeViz:
     def __init__(self):
         logging.debug("Initializing application")
         self.root = tk.Tk()
+        self.root.withdraw()
         self.root.configure(background=DARK_SLATE)
         # self.root.overrideredirect(1)
         self.paneHeight = 195
@@ -94,9 +96,9 @@ class TradeViz:
         self.player = ""
         self.date = ""
         self.preTradeSectionLines = 0
-        self.drawMap()
         self.root.grid_columnconfigure(1, weight=1)
         self.getConfig()
+        self.root.deiconify()
 
         # self.root.focus_set()
         logging.debug("Entering main loop")
@@ -356,7 +358,7 @@ class TradeViz:
                 tradesection = tradesection.split("production_leader")[0]   # drop the part after the end
                 self.getTradeData(tradesection)
                 self.getNodeData()
-                print "successfully parsed save file!"
+
             except Exception as e:
                 msg = "Tradeviz could not parse this file. You might be trying to open a corrupted save," + \
                       "or a save created with an unsupported mod or game version."
@@ -594,12 +596,12 @@ class TradeViz:
         except IOError as e:
             logging.critical("Could not find trade nodes file: %s" % e)
 
-        tradenodes = re.findall(r"(\w+)\s*=\s*{\s*location=(\d+)", txt)
+        tradenodes = NodeGrammar.nodes.parseString(txt)
+        # for tn in tradenodes: print tn
         logging.info("%i tradenodes found in %i chars" % (len(tradenodes), len(txt)))
 
-        for i in range(len(tradenodes)):
-            a, b = tradenodes[i]
-            tradenodes[i] = (a, int(b))
+        for i, tradenode in enumerate(tradenodes):
+            tradenodes[i] = (tradenode["name"], tradenode["location"])
 
         self.tradenodes = tradenodes
 
@@ -656,7 +658,8 @@ class TradeViz:
 
 
     def intersectsNode(self, node1, node2):
-        """Check whether a trade route intersects a trade node circle (other than source and target nodes)
+        """
+        Check whether a trade route intersects a trade node circle (other than source and target nodes)
         See http://mathworld.wolfram.com/Circle-LineIntersection.html
         """
 
@@ -729,7 +732,7 @@ class TradeViz:
         if value > 0:
             linecolor = "#000"
         else:
-            if self.showZeroVar.get() == 0:
+            if not self.showZeroVar.get():
                 return
             linecolor = "#ff0"
 
