@@ -9,7 +9,6 @@ Created on 21 aug. 2013
 # TODO: Show countries option: ALL, specific tag
 # TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
 # TODO: full, tested support for Mac and Linux
-# TODO: Test zip mod support
 # TODO: Wait animation during parsing
 
 # DEPENDENDIES:
@@ -27,6 +26,7 @@ import json
 import zipfile
 from math import sqrt, ceil, log1p
 from distutils import version
+import threading
 
 # GUI stuff
 import Tkinter as tk
@@ -39,7 +39,6 @@ from PIL import Image, ImageTk, ImageDraw
 from TradeGrammar import tradeSection
 import pyparsing
 import NodeGrammar
-from json.decoder import linecol
 
 # globals
 provinceBMP = "../res/worldmap.gif"
@@ -367,6 +366,11 @@ class TradeViz:
         """Start parsing the selected save file and show the results on the map"""
 
         logging.info("Processing save file")
+        self.done = False
+        self.goTime = time.time()
+        self.clearMap()
+        waitIconThread = threading.Thread(target=self.doWaitIcon)
+        waitIconThread.start()
 
         if self.config["savefile"]:
 
@@ -375,7 +379,7 @@ class TradeViz:
             except ReadError as e:
                 logging.error("Failed to get savefile text: " + e.message)
                 tkMessageBox.showerror("Can't read file!", "This save file %s and can't be processed by %s" % (e.message, APP_NAME))
-                self.drawMap()
+                self.drawMap(True)
                 return
 
             try:
@@ -402,18 +406,40 @@ class TradeViz:
                 tkMessageBox.showerror("Can't read file!", msg)
 
             try:
-                self.drawMap()
+                self.drawMap(True)
             except InvalidTradeNodeException as e:
                 logging.error("Invalid trade node index: %s" % e)
                 tkMessageBox.showerror("Error", "Save file contains invalid trade node info. " +
                        "If your save is from a modded game, please indicate the mod folder and try again.")
 
 
+    def doWaitIcon(self, angle=0):
+
+        my = (self.h) / 2 - self.paneHeight + 40
+        mx = self.w / 2
+        radius = 16
+        arcs = []
+        arcs.append (self.canvas.create_arc(mx - radius, my - radius, mx + radius, my + radius, fill=WHITE, outline=WHITE, start=angle))
+        arcs.append (self.canvas.create_arc(mx - radius, my - radius, mx + radius, my + radius, fill=WHITE, outline=WHITE, start=(angle + 180)))
+
+        while not self.done and (time.time() - self.goTime) < 10:
+
+            self.canvas.itemconfig(arcs[0], start=angle)
+            self.canvas.itemconfig(arcs[1], start=angle + 180)
+
+            self.canvas.update_idletasks()
+            angle -= 8
+            time.sleep(.05)
+
+        for arc in arcs:
+            self.canvas.delete(arc)
+
+
     def getSaveText(self):
         """Extract the text from the selected save file"""
 
         self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2),
-                                text="Please wait... Save file is being processed...", fill="white")
+                                text="Please wait... Save file is being processed...", fill="white", font=SMALL_FONT)
         self.root.update()
         logging.debug("Reading save file %s" % os.path.basename(self.config["savefile"]))
 
@@ -884,17 +910,25 @@ class TradeViz:
                 self.zeroArrows += [z0, z1, z2, z3, z4]
 
 
-    def drawMap(self):
+    def clearMap(self, update=False):
+        self.canvas.create_image((0, 0), image=self.provinceImage, anchor=tk.NW)
+        self.drawImg = self.mapImg.convert("RGB")
+        self.mapDraw = ImageDraw.Draw(self.drawImg)
+        if update:
+            self.canvas.update()
+
+
+    def drawMap(self, clear=False):
         """Top level method for redrawing the world map and trade network"""
 
         logging.debug("Drawing map..")
         t0 = time.time()
 
-        self.canvas.create_image((0, 0), image=self.provinceImage, anchor=tk.NW)
-        self.drawImg = self.mapImg.convert("RGB")
-        self.mapDraw = ImageDraw.Draw(self.drawImg)
+        self.clearMap(clear)
+        self.done = True
         ratio = self.ratio
         self.zeroArrows = []
+
 
         # draw incoming trade arrows
         t1 = time.time()
