@@ -9,7 +9,7 @@ Created on 21 aug. 2013
 # TODO: Show countries option: ALL, specific tag
 # TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
 # TODO: full, tested support for Mac and Linux
-# TODO: Wait animation during parsing
+# TODO: Nodes show options: Player abs trade power, player rel trade power, total trade power
 
 # DEPENDENDIES:
 # PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
@@ -100,7 +100,7 @@ class TradeViz:
         self.player = ""
         self.date = ""
         self.zoomed = False
-        self.saveVersion = version.LooseVersion("0.0")
+        self.saveVersion = ""
         self.preTradeSectionLines = 0
         self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(7, weight=1)
@@ -992,11 +992,14 @@ class TradeViz:
             nNodes += 1
         logging.debug("Drew %i nodes" % nNodes)
 
-        self.canvas.create_text((10, self.mapHeight * ratio - 40), anchor="nw",
+        self.canvas.create_text((10, self.mapHeight * ratio - 60), anchor="nw",
                                 text="Player: %s" % self.player, fill="white")
 
-        self.canvas.create_text((10, self.mapHeight * ratio - 20), anchor="nw",
+        self.canvas.create_text((10, self.mapHeight * ratio - 40), anchor="nw",
                                 text="Date: %s" % self.date, fill="white")
+
+        self.canvas.create_text((10, self.mapHeight * ratio - 20), anchor="nw",
+                                text="Version: %s" % self.saveVersion, fill="white")
 
         self.mapDraw.text((10, self.mapHeight * ratio - 44), "Player: %s" % self.player, fill=WHITE)
         self.mapDraw.text((10, self.mapHeight * ratio - 24), "Date: %s" % self.date, fill=WHITE)
