@@ -25,7 +25,7 @@ import os
 import sys
 import json
 import zipfile
-from math import sqrt
+from math import sqrt, ceil, log1p
 from distutils import version
 
 # GUI stuff
@@ -39,6 +39,7 @@ from PIL import Image, ImageTk, ImageDraw
 from TradeGrammar import tradeSection
 import pyparsing
 import NodeGrammar
+from json.decoder import linecol
 
 # globals
 provinceBMP = "../res/worldmap.gif"
@@ -51,8 +52,13 @@ LIGHT_SLATE = "#36434b"
 DARK_SLATE = "#29343a"
 BTN_BG = "#364555"
 BANNER_BG = "#9E9186"  # TODO: better color?
+WHITE = "#fff"
 
-VERSION = "1.4.1"
+# Fonts
+SMALL_FONT = ("Cambria", 12)
+BIG_FONT = ("Cambria", 18, "bold")
+
+VERSION = "1.4.2"
 COMPATIBILITY_VERSION = version.LooseVersion("1.13.0") # EU4 version
 APP_NAME = "EU4 Trade Visualizer"
 
@@ -63,10 +69,9 @@ class TradeViz:
         logging.debug("Initializing application")
         self.root = tk.Tk()
         self.root.withdraw()
-        self.root.configure(background=DARK_SLATE)
-        # self.root.overrideredirect(1)
+
         self.paneHeight = 195
-        self.w, self.h = self.root.winfo_screenwidth(), self.root.winfo_screenheight() - self.paneHeight
+        self.w, self.h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         self.root.title("%s v%s" % (APP_NAME, VERSION))
         self.root.bind("<Escape>", lambda x: self.exit("Escape"))
         self.root.wm_protocol("WM_DELETE_WINDOW", lambda: self.exit("Close Window"))
@@ -81,7 +86,7 @@ class TradeViz:
             self.mapImg = Image.open(provinceBMP).convert("RGB")
             self.mapWidth = self.mapImg.size[0]
             self.mapHeight = self.mapImg.size[1]
-            self.mapImg.thumbnail((self.w, self.h), Image.BICUBIC)
+            self.mapImg.thumbnail((self.w - 10, self.h), Image.BICUBIC)
             self.drawImg = self.mapImg.convert("RGB")
             self.mapThumbSize = self.mapImg.size
             self.ratio = self.mapThumbSize[0] / float(self.mapWidth)
@@ -95,8 +100,11 @@ class TradeViz:
         self.tradenodes = []
         self.player = ""
         self.date = ""
+        self.zoomed = False
+        self.saveVersion = version.LooseVersion("0.0")
         self.preTradeSectionLines = 0
         self.root.grid_columnconfigure(1, weight=1)
+        self.root.grid_rowconfigure(7, weight=1)
         self.getConfig()
         self.root.deiconify()
 
@@ -127,9 +135,11 @@ class TradeViz:
             self.modPathVar.set(self.config["lastModPath"])
         if "modPaths" in self.config:
             self.modPathComboBox.configure(values=[""] + self.config["modPaths"])
+        if "arrowScale" in self.config:
+            self.arrowScaleVar.set(self.config["arrowScale"])
 
         defaults = {"savefile": "", "showZeroRoutes": 0, "nodesShow": "Total value",
-                    "modPaths": [], "lastModPath": ""}
+                    "modPaths": [], "lastModPath": "", "arrowScale": "Square root"}
 
         for k in defaults:
             if not k in self.config:
@@ -197,23 +207,80 @@ class TradeViz:
 
         self.canvas = tk.Canvas(self.root, width=self.mapThumbSize[0], height=self.mapThumbSize[1],
                                 highlightthickness=0, border=5, relief="flat", bg=DARK_SLATE)
-        self.canvas.grid(row=1, column=0, columnspan=4, sticky=tk.W, padx=5)
+        self.canvas.grid(row=1, column=0, columnspan=4, sticky="W", padx=5)
+        self.canvas.bind("<Button-1>", self.clickMap)
+        self.setupTkStyles()
+        self.root.geometry("%dx%d+0+0" % (self.w, self.h))
+        self.root.minsize(self.w, self.h - 20)
+        self.root.maxsize(self.w, self.h - 20)
+        self.root.wm_state('zoomed')
+        self.root.configure(background=DARK_SLATE)
 
         # Labels, entries, checkboxes
 
-        tk.Label(self.root, text="EU4 Trade Visualizer", bg=BANNER_BG, fg="#fff", font=("Cambria", 18, 'bold')).grid(
-                 row=0, column=0, columnspan=4, sticky="WE", padx=10, pady=(10, 0))
+        tk.Label(self.root, text="EU4 Trade Visualizer", bg=BANNER_BG, fg=WHITE, font=BIG_FONT).grid(
+                 row=0, column=0, columnspan=4, sticky="WE", padx=10, pady=(10, 5))
 
-        tk.Label(self.root, text="Save file:", bg=DARK_SLATE, fg="#fff",
-                 font=("Cambria", 12), anchor="w").grid(row=2, column=0, padx=6, pady=2, sticky="WE")
-        self.saveEntry = tk.Entry(self.root, bd=0, border=0, font=("Cambria", 12), bg=LIGHT_SLATE, fg="white")
+        tk.Label(self.root, text="Save file:", bg=DARK_SLATE, fg=WHITE,
+                 font=SMALL_FONT, anchor="w").grid(row=2, column=0, padx=6, pady=2, sticky="WE")
+        self.saveEntry = tk.Entry(self.root, bd=0, border=0, font=SMALL_FONT, bg=LIGHT_SLATE, fg="white")
         self.saveEntry.config(highlightbackground="red", border=3, relief="flat")
         self.saveEntry.grid(row=2, column=1, columnspan=2, sticky="WE", padx=6, pady=4, ipady=0)
 
-        tk.Label(self.root, text="Mod:", bg=DARK_SLATE, fg="#fff",
-                 font=("Cambria", 12)).grid(row=3, column=0, padx=(6, 2), pady=2, sticky="W")
-
+        tk.Label(self.root, text="Mod:", bg=DARK_SLATE, fg=WHITE,
+                 font=SMALL_FONT).grid(row=3, column=0, padx=(6, 2), pady=2, sticky="W")
         self.modPathVar = tk.StringVar()
+        self.modPathComboBox = ttk.Combobox(self.root, textvariable=self.modPathVar, values=[""], state="readonly", font=SMALL_FONT, style="My.TCombobox")
+        self.modPathComboBox.grid(row=3, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
+        self.modPathVar.trace("w", self.modPathChanged)
+
+        tk.Label(self.root, text="Nodes show:", bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT).grid(row=4, column=0, padx=(6, 2), pady=2, sticky="W")
+        self.nodesShowVar = tk.StringVar()
+        self.nodesShowVar.set("Total value")
+        self.nodesShow = ttk.Combobox(self.root, textvariable=self.nodesShowVar, values=["Local value", "Total value"],
+                                      state="readonly", font=SMALL_FONT, style="My.TCombobox")
+        self.nodesShow.grid(row=4, column=1, columnspan=2, sticky="W", padx=6, pady=2)
+        self.nodesShowVar.trace("w", self.nodesShowChanged)
+
+        tk.Label(self.root, text="Arrow scaling:", bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT).grid(row=5, column=0, padx=(6, 2), pady=2, sticky="W")
+        self.arrowScaleVar = tk.StringVar()
+        self.arrowScaleVar.set("Square root")
+        self.arrowScale = ttk.Combobox(self.root, textvariable=self.arrowScaleVar, values=["Linear", "Square root", "Logarithmic"],
+                                      state="readonly", font=SMALL_FONT, style="My.TCombobox")
+        self.arrowScale.grid(row=5, column=1, columnspan=2, sticky="W", padx=6, pady=2)
+        self.arrowScaleVar.trace("w", self.arrowScaleChanged)
+
+        self.showZeroVar = tk.IntVar(value=1)
+        self.showZeroes = tk.Checkbutton(self.root, text="Show unused trade routes",
+                                         bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT, selectcolor=LIGHT_SLATE,
+                                         activebackground=DARK_SLATE, activeforeground=WHITE,
+                                         variable=self.showZeroVar, command=self.toggleShowZeroes)
+        self.showZeroes.grid(row=6, column=0, columnspan=2, sticky="W", padx=6, pady=2)
+
+        # Buttons
+
+        self.browseFileBtn = tk.Button(self.root, text="Browse...", command=self.browseSave,
+                                       bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
+        self.browseFileBtn.grid(row=2, column=3, sticky="WSEN", padx=7, pady=3)
+
+        self.browseModFolderBtn = tk.Button(self.root, text="Browse...", command=self.browseMod,
+                                            bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
+        self.browseModFolderBtn.grid(row=3, column=3, sticky="WSEN", padx=7, pady=3, ipady=1)
+
+        self.goButton = tk.Button(self.root, text="Go!", command=self.go, bg=BTN_BG, fg=WHITE,
+                                  font=SMALL_FONT + ("bold",), relief="ridge")
+        self.goButton.grid(row=7, column=1, sticky="SE", ipadx=20, padx=7, pady=15)
+
+        self.saveImgButton = tk.Button(self.root, text="Save Map", command=self.saveMap, bg=BTN_BG, fg=WHITE,
+                                       font=SMALL_FONT, relief="ridge")
+        self.saveImgButton.grid(row=7, column=2, sticky="SE", padx=7, pady=15)
+
+        self.exitButton = tk.Button(self.root, text="Exit", command=lambda: self.exit("Button"),
+                                    bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
+        self.exitButton.grid(row=7, column=3, sticky="SWE", padx=7, pady=15)
+
+
+    def setupTkStyles(self):
         style = ttk.Style()
         style.element_create("plain.field", "from", "default")
 
@@ -231,62 +298,20 @@ class TradeViz:
                      ('Combobox.downarrow', {'sticky': 'nse'})], 'border':'0', 'sticky': 'nswe'})])
 
         style.map("TCombobox", selectbackground=[('!focus', LIGHT_SLATE), ('focus', LIGHT_SLATE)],
-                               selectforeground=[('!focus', "#fff"), ('focus', "#fff")])
+                               selectforeground=[('!focus', WHITE), ('focus', WHITE)])
         style.configure("My.TCombobox",
                                         background=LIGHT_SLATE,
-                                        foreground="#fff"
+                                        foreground=WHITE
                                         )
 
         listboxstyle = ttk.Style()
         listboxstyle.configure("TListbox", background="#f00", foreground="#00f")
         listboxstyle.map("TListbox", selectbackground=[('!focus', LIGHT_SLATE), ('focus', LIGHT_SLATE)],
-                               selectforeground=[('!focus', "#fff"), ('focus', "#fff")])
+                               selectforeground=[('!focus', WHITE), ('focus', WHITE)])
         listboxstyle.configure("TListbox",
                                         background=LIGHT_SLATE,
-                                        foreground="#fff"
+                                        foreground=WHITE
                                         )
-
-        self.modPathComboBox = ttk.Combobox(self.root, textvariable=self.modPathVar, values=[""], state="readonly", font=("Cambria", 12), style="My.TCombobox")
-        self.modPathComboBox.grid(row=3, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
-        self.modPathVar.trace("w", self.modPathChanged)
-
-        tk.Label(self.root, text="Nodes show:", bg=DARK_SLATE, fg="#fff", font=("Cambria", 12)).grid(row=4, column=0, padx=(6, 2), pady=2, sticky="W")
-        self.nodesShowVar = tk.StringVar()
-        self.nodesShowVar.set("Total value")
-        self.nodesShow = ttk.Combobox(self.root, textvariable=self.nodesShowVar, values=["Local value", "Total value"],
-                                      state="readonly", font=("Cambria", 12), style="My.TCombobox")
-        self.nodesShow.grid(row=4, column=1, columnspan=2, sticky=tk.W, padx=6, pady=2)
-        self.nodesShowVar.trace("w", self.nodesShowChanged)
-
-        self.showZeroVar = tk.IntVar(value=1)
-        self.showZeroes = tk.Checkbutton(self.root, text="Show unused trade routes",
-                                         bg=DARK_SLATE, fg="#fff", font=("Cambria", 12), selectcolor=LIGHT_SLATE,
-                                         activebackground=DARK_SLATE, activeforeground="#fff",
-                                         variable=self.showZeroVar, command=self.toggleShowZeroes)
-        self.showZeroes.grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=6, pady=2)
-
-        # Buttons
-
-        self.browseFileBtn = tk.Button(self.root, text="Browse...", command=self.browseSave,
-                                       bg=BTN_BG, fg="#fff", font=("Cambria", 11), relief="ridge")
-        self.browseFileBtn.grid(row=2, column=3, sticky="WSEN", padx=6, pady=3)
-
-        self.browseModFolderBtn = tk.Button(self.root, text="Browse...", command=self.browseMod,
-                                            bg=BTN_BG, fg="#fff", font=("Cambria", 11), relief="ridge")
-        self.browseModFolderBtn.grid(row=3, column=3, sticky="WSEN", padx=6, pady=3, ipady=1)
-
-        self.goButton = tk.Button(self.root, text="Go!", command=self.go, bg=BTN_BG, fg="#fff",
-                                  font=("Cambria", 11, "bold"), relief="ridge")
-        self.goButton.grid(row=5, column=1, sticky=tk.E , ipadx=20, padx=6, pady=2)
-
-        self.saveImgButton = tk.Button(self.root, text="Save Map", command=self.saveMap, bg=BTN_BG, fg="#fff",
-                                       font=("Cambria", 11), relief="ridge")
-        self.saveImgButton.grid(row=5, column=2, sticky=tk.E, padx=6, pady=2)
-
-        self.exitButton = tk.Button(self.root, text="Exit", command=lambda: self.exit("Button"),
-                                    bg=BTN_BG, fg="#fff", font=("Cambria", 11), relief="ridge")
-        self.exitButton.grid(row=5, column=3, sticky=tk.E + tk.W, padx=6, pady=2)
-
 
     def browseSave(self, event=None):
         """Let the user browseSave for an EU4 save file to be used by the program"""
@@ -419,9 +444,11 @@ class TradeViz:
 
         return txt
 
+
     def checkForIronMan(self, txt):
         if txt.startswith("EU4binM"):
             raise ReadError("appears to be an Ironman save")
+
 
     def checkForCompression(self, txt):
         """Check whether the save file text is compressed. If so, return uncompressed text, otherwise return the text unchanged"""
@@ -434,18 +461,20 @@ class TradeViz:
         else:
             return txt
 
+
     def checkForVersion(self, txt):
         versionTuple = re.findall("first=(\d+)\s+second=(\d+)\s+third=(\d+)", txt[:500])
         if versionTuple == []:
             logging.warning("Could not find version info!")
         else:
             versionTuple = versionTuple[0]
-            saveVersion = version.LooseVersion("%s.%s.%s" % versionTuple)
-            logging.info("Savegame version is %s" % saveVersion)
-            if saveVersion > COMPATIBILITY_VERSION:
+            self.saveVersion = version.LooseVersion("%s.%s.%s" % versionTuple)
+            logging.info("Savegame version is %s" % self.saveVersion)
+            if self.saveVersion > COMPATIBILITY_VERSION:
                 tkMessageBox.showwarning("Version warning", ("This savegame is from an a newer EU4 version (%s) than " + \
                                                 "the version this tool designed to work for (%s). " + \
-                                                "It might not work correctly!") % (saveVersion.vstring, COMPATIBILITY_VERSION.vstring))
+                                                "It might not work correctly!") % (self.saveVersion.vstring, COMPATIBILITY_VERSION.vstring))
+
 
     def toggleShowZeroes(self, event=None):
         """Turn the display of trade routes with a value of zero on or off"""
@@ -468,6 +497,11 @@ class TradeViz:
 
     def nodesShowChanged(self, *args):
         self.config["nodesShow"] = self.nodesShowVar.get()
+        self.drawMap()
+
+
+    def arrowScaleChanged(self, *args):
+        self.config["arrowScale"] = self.arrowScaleVar.get()
         self.drawMap()
 
 
@@ -657,6 +691,23 @@ class TradeViz:
         return 5 + int(7 * value)
 
 
+    def getLineWidth(self, value):
+
+        arrowScaleStyle = self.arrowScaleVar.get()
+
+        if value <= 0:
+            return 1
+
+        elif arrowScaleStyle == "Linear":
+            return int(ceil(10 * value / self.maxIncoming))
+
+        elif arrowScaleStyle == "Square root":
+            return int(round(10 * sqrt(value) / sqrt(self.maxIncoming)))
+
+        elif arrowScaleStyle == "Logarithmic":
+            return int(round(10 * log1p(value) / log1p(self.maxIncoming)))
+
+
     def intersectsNode(self, node1, node2):
         """
         Check whether a trade route intersects a trade node circle (other than source and target nodes)
@@ -697,6 +748,9 @@ class TradeViz:
     def drawArrow(self, fromNode, toNode, value, toRadius):
         """Draw an arrow between two nodes on the map"""
 
+        if value <= 0 and not self.showZeroVar.get():
+            return
+
         x2, y2 = self.getNodeLocation(fromNode)
         x, y = self.getNodeLocation(toNode)
         isPacific = self.pacificTrade(x, y, x2, y2)
@@ -721,20 +775,10 @@ class TradeViz:
         dy /= l
 
         ratio = self.ratio
-        # lineWidth = int(ceil(10 * value / self.maxIncoming))
-        if value > 0:
-            lineWidth = int(round(10 * sqrt(value) / sqrt(self.maxIncoming)))
-        else:
-            lineWidth = 1
+        lineWidth = self.getLineWidth(value)
         arrowShape = (max(8, lineWidth * 2), max(10, lineWidth * 2.5), max(5, lineWidth))
         w = max(5 / ratio, 1.5 * lineWidth / ratio)
-
-        if value > 0:
-            linecolor = "#000"
-        else:
-            if not self.showZeroVar.get():
-                return
-            linecolor = "#ff0"
+        linecolor = "#000" if value > 0 else "#ff0"
 
         if not isPacific:
 
@@ -781,11 +825,7 @@ class TradeViz:
                 if value == 0:
                     self.zeroArrows += [z1, z2, z3]
 
-            z5 = self.canvas.create_text(centerOfLine, text=int(round(value)), fill="#fff")
-            z6 = self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % round(value), fill="#fff")
-
-            if value == 0:
-                self.zeroArrows += [z5, z6]
+            self.arrowLabels.append([centerOfLine, value])
 
 
         else:  # Trade route crosses edge of map
@@ -838,11 +878,10 @@ class TradeViz:
 
                 centerOfLine = ((self.mapWidth + x) / 2 * ratio, (yf + y) / 2 * ratio)
 
-            z5 = self.canvas.create_text(centerOfLine, text=int(value), fill="#fff")
-            z6 = self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), "%d" % value, fill="#fff")
+            self.arrowLabels.append([centerOfLine, value])
 
             if value == 0:
-                self.zeroArrows += [z0, z1, z2, z3, z4, z5, z6]
+                self.zeroArrows += [z0, z1, z2, z3, z4]
 
 
     def drawMap(self):
@@ -850,9 +889,7 @@ class TradeViz:
 
         logging.debug("Drawing map..")
         t0 = time.time()
-        self.root.geometry("%dx%d+0+0" % (self.w, self.mapThumbSize[1] + self.paneHeight))
-        self.root.minsize(self.w, self.mapThumbSize[1] + self.paneHeight)
-        self.root.maxsize(self.w, self.mapThumbSize[1] + self.paneHeight)
+
         self.canvas.create_image((0, 0), image=self.provinceImage, anchor=tk.NW)
         self.drawImg = self.mapImg.convert("RGB")
         self.mapDraw = ImageDraw.Draw(self.drawImg)
@@ -862,6 +899,7 @@ class TradeViz:
         # draw incoming trade arrows
         t1 = time.time()
         nArrows = 0
+        self.arrowLabels = []
 
         for n, node in enumerate(self.tradenodes):
             x, y = self.getNodeLocation(n + 1)
@@ -872,6 +910,8 @@ class TradeViz:
                 if "incomingValue" in data:
                     for i, value in enumerate(data["incomingValue"]):
                         fromNodeNr = data["incomingFromNode"][i]
+                        if fromNodeNr >= len(self.tradenodes):
+                            continue
                         self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data))
                         nArrows += 1
             except KeyError:
@@ -880,6 +920,16 @@ class TradeViz:
                                        " currently installed EU4 version, or incorrect mod selected.")
                 return
         logging.debug("Drew %i arrows in %.2fs" % (nArrows, time.time() - t1))
+
+        # draw trade arrow labels
+        for [centerOfLine, value] in self.arrowLabels:
+            if value > 0 or self.showZeroVar.get():
+                valueStr = "%i" % ceil(value) if (value >= 2 or value <= 0) else ("%.1f" % value)
+                z5 = self.canvas.create_text(centerOfLine, text=valueStr, fill=WHITE)
+                z6 = self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), valueStr, fill=WHITE)
+
+                if value == 0:
+                    self.zeroArrows += [z5, z6]
 
         # draw trade nodes and their current value
         nNodes = 0
@@ -904,7 +954,7 @@ class TradeViz:
 
             self.mapDraw.ellipse((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
                                     outline=tradeNodeColor, fill=tradeNodeColor)
-            self.mapDraw.text((x * ratio - 3 * digits, y * ratio - 4), "%d" % v, fill="#fff")
+            self.mapDraw.text((x * ratio - 3 * digits, y * ratio - 4), "%d" % v, fill=WHITE)
             nNodes += 1
         logging.debug("Drew %i nodes" % nNodes)
 
@@ -914,8 +964,8 @@ class TradeViz:
         self.canvas.create_text((10, self.mapHeight * ratio - 20), anchor="nw",
                                 text="Date: %s" % self.date, fill="white")
 
-        self.mapDraw.text((10, self.mapHeight * ratio - 44), "Player: %s" % self.player, fill="#fff")
-        self.mapDraw.text((10, self.mapHeight * ratio - 24), "Date: %s" % self.date, fill="#fff")
+        self.mapDraw.text((10, self.mapHeight * ratio - 44), "Player: %s" % self.player, fill=WHITE)
+        self.mapDraw.text((10, self.mapHeight * ratio - 24), "Date: %s" % self.date, fill=WHITE)
 
         logging.info("Finished drawing map in %.3f seconds" % (time.time() - t0))
 
@@ -945,6 +995,15 @@ class TradeViz:
                 logging.error("Problem saving map image: %s" % e)
 
 
+    def clickMap(self, *args):
+        # TODO: implement zoom function
+        x = args[0].x
+        y = args[0].y
+        self.zoomed = not self.zoomed
+
+        logging.info("Map clicked at (%i, %i), self.zoomed is now %s" % (x, y, self.zoomed))
+
+
 
 def sign(self, v):
     if v < 0:
@@ -953,16 +1012,17 @@ def sign(self, v):
         return 1
 
 
-
 class InvalidTradeNodeException(Exception):
     def __init__(self, msg):
         Exception.__init__(self)
         self.message = msg
 
+
 class ReadError(Exception):
     def __init__(self, msg):
         Exception.__init__(self)
         self.message = msg
+
 
 class ParseError(Exception):
     def __init__(self, msg):
