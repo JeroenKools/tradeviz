@@ -1,6 +1,5 @@
 """
 Trade Visualizer for EU4
-
 Created on 21 aug. 2013
 
 @author: Jeroen Kools
@@ -8,7 +7,7 @@ Created on 21 aug. 2013
 
 # TODO: Show countries option: ALL, specific tag
 # TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
-# TODO: full, tested support for Mac and Linux
+# TODO: Full, tested support for Mac and Linux
 # TODO: Nodes show options: Player abs trade power, player rel trade power, total trade power
 
 # DEPENDENDIES:
@@ -57,8 +56,8 @@ WHITE = "#fff"
 SMALL_FONT = ("Cambria", 12)
 BIG_FONT = ("Cambria", 18, "bold")
 
-VERSION = "1.4.2"
-COMPATIBILITY_VERSION = version.LooseVersion("1.13.0") # EU4 version
+VERSION = "1.5.0"
+COMPATIBILITY_VERSION = version.LooseVersion("1.21.1") # EU4 version
 APP_NAME = "EU4 Trade Visualizer"
 
 
@@ -193,9 +192,10 @@ class TradeViz:
             self.config["installDir"] = ""
 
         if self.config["installDir"] == "" or not os.path.exists(self.config["installDir"]):
-            tkMessageBox.showerror("Error", "Europa Universalis 4 installation could not be found! " +
-                                   "The program needs to read some files from the game to work correctly. " +
-                                   "Please select your installation folder manually.")
+            self.showError("EU4 installation folder not found!",
+                    "Europa Universalis 4 installation could not be found! " +
+                    "The program needs to read some files from the game to work correctly. " +
+                    "Please select your installation folder manually.")
             folder = tkFileDialog.askdirectory(initialdir="/")
             if os.path.exists(os.path.join(folder, "common")):
                 self.config["installDir"] = folder
@@ -352,7 +352,8 @@ class TradeViz:
 
         if not os.path.exists(modzip) and not os.path.exists(moddir):
             if modpath:
-                tkMessageBox.showerror("Error", "This does not seem to be a valid mod path!")
+                self.showError("ModDir %s and modzip %s do not appeat to be a valid mod" % (moddir, modzip),
+                               "This does not seem to be a valid mod path!")
             return
 
         self.modPathVar.set(modpath)
@@ -377,8 +378,8 @@ class TradeViz:
             try:
                 txt = self.getSaveText()
             except ReadError as e:
-                logging.error("Failed to get savefile text: " + e.message)
-                tkMessageBox.showerror("Can't read file!", "This save file %s and can't be processed by %s" % (e.message, APP_NAME))
+                self.showError("Failed to get savefile text: " + e.message,
+                                "This save file %s and can't be processed by %s" % (e.message, APP_NAME))
                 self.drawMap(True)
                 return
 
@@ -402,16 +403,14 @@ class TradeViz:
                     print e.message
                     print ("+" + str(self.preTradeSectionLines))
 
-                logging.error(e)
-                tkMessageBox.showerror("Can't read file!", msg)
+                self.showError(e, "Can't read file! " + msg)
 
             try:
                 self.drawMap(True)
             except InvalidTradeNodeException as e:
-                logging.error("Invalid trade node index: %s" % e)
-                tkMessageBox.showerror("Error", "Save file contains invalid trade node info. " +
-                       "If your save is from a modded game, please indicate the mod folder and try again.")
-
+                self.showError("Invalid trade node index: %s" % e,
+                               "Save file contains invalid trade node info. " +
+                               "If your save is from a modded game, please indicate the mod folder and try again.")
 
     def doWaitIcon(self, angle=0):
 
@@ -439,7 +438,9 @@ class TradeViz:
         """Extract the text from the selected save file"""
 
         self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2),
-                                text="Please wait... Save file is being processed...", fill="white", font=SMALL_FONT)
+                                text="Please wait... Save file is being processed...",
+                                fill="white",
+                                font=SMALL_FONT)
         self.root.update()
         logging.debug("Reading save file %s" % os.path.basename(self.config["savefile"]))
 
@@ -481,7 +482,8 @@ class TradeViz:
         if txt[:2] == "PK":
             logging.info("Save file is compressed, unzipping...")
             zippedSave = zipfile.ZipFile(self.config["savefile"])
-            unzippedSave = zippedSave.open(os.path.basename(self.config["savefile"]))
+            filename = [x for x in zippedSave.namelist() if x.endswith(".eu4")][0]
+            unzippedSave = zippedSave.open(filename)
             txt = unzippedSave.read()
             return txt
         else:
@@ -656,6 +658,7 @@ class TradeViz:
         except IOError as e:
             logging.critical("Could not find trade nodes file: %s" % e)
 
+        txt = removeComments(txt)
         tradenodes = NodeGrammar.nodes.parseString(txt)
         # for tn in tradenodes: print tn
         logging.info("%i tradenodes found in %i chars" % (len(tradenodes), len(txt)))
@@ -949,9 +952,9 @@ class TradeViz:
                         self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data))
                         nArrows += 1
             except KeyError:
-                logging.error("Encountered unknown trade node %s!" % node[0])
-                tkMessageBox.showerror("Error", "An invalid trade node was encountered. Savegame doesn't match" +
-                                       " currently installed EU4 version, or incorrect mod selected.")
+                self.showError("Encountered unknown trade node %s!" % node[0],
+                               "An invalid trade node was encountered. Savegame doesn't match" +
+                               " currently installed EU4 version, or incorrect mod selected.")
                 return
         logging.debug("Drew %i arrows in %.2fs" % (nArrows, time.time() - t1))
 
@@ -1041,12 +1044,24 @@ class TradeViz:
         logging.info("Map clicked at (%i, %i), self.zoomed is now %s" % (x, y, self.zoomed))
 
 
+    def showError(self, logMessage, userMessage):
+        if not userMessage:
+            userMessage = logMessage
+        logging.error(logMessage)
+        tkMessageBox.showerror("Error", userMessage)
+
 
 def sign(self, v):
     if v < 0:
         return -1
     else:
         return 1
+
+def removeComments(txt):
+    lines = txt.split("\n")
+    for i in range(len(lines)):
+        lines[i] = lines[i].split("#")[0]
+    return "\n".join(lines)
 
 
 class InvalidTradeNodeException(Exception):

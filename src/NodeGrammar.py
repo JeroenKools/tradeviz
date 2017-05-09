@@ -23,18 +23,28 @@ isInland = Literal("inland") + eq + yesno
 
 
 node = Group(name.setResultsName("name") + eq + begin + \
-    Each([location, Optional(color), Optional(isInland), ZeroOrMore(outgoing), OneOrMore(member), Optional(isEnd)]) + \
+    Each([location,
+          Optional(color),
+          Optional(isInland),
+          ZeroOrMore(outgoing),
+          OneOrMore(member),
+          Optional(isEnd)]) + \
     stop)
 nodes = OneOrMore(node)
 
 
 if __name__ == "__main__":
-    f = open(r"C:\Program Files (x86)\Steam\steamapps\common\Europa Universalis IV\common\tradenodes\00_tradenodes2.txt")
+    f = open(r"C:\Program Files (x86)\Steam\steamapps\common\Europa Universalis IV\common\tradenodes\00_tradenodes.txt")
     txt = f.read()
+    import tradeviz
+    txt = tradeviz.removeComments(txt)
     results = nodes.parseString(txt)
 
-    print "Found %i tradenodes" % len(results)
+    nLocations = txt.count("location")
+    nFound = len(results)
 
-    print "Tradenode 1:\n", results[1].asDict()
-    print results[1]["name"], results[1]["location"]
+    print "Found %i out of %i tradenodes" % (nFound, nLocations)
+
+#     for r in results:
+#         print r["name"], r["location"]
 

@@ -110,13 +110,14 @@ tToSection = Literal("t_to") + eq + begin + OneOrMore(name + eq + flt) + stop
 # new (AOW or ED?) format for a country's power in a node
 countryPowerSection = name + eq + begin + \
                     (
-                       typeLine +
+                       Optional(typeLine) +
                        Optional(valLine) +
                        Optional(prevLine) +
                        Optional(maxPowLine) +
                        maxDemandLine +
                        Optional(provincePowerLine) +
                        Optional(shipPowerLine) +
+                       Optional(privateerMissionLine) +
                        Optional(powerFractionLine) +
                        Optional(moneyLine) +
                        Optional(totalLine) +
