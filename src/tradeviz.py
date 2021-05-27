@@ -10,12 +10,12 @@ Created on 21 aug. 2013
 # TODO: Full, tested support for Mac and Linux
 # TODO: Nodes show options: Player abs trade power, player rel trade power, total trade power
 
-# DEPENDENDIES:
+# DEPENDENCIES:
 # PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
 # Python Imaging Library: http://www.pythonware.com/products/pil/
 # On Ubuntu: aptitude install python-tk python-imaging python-imaging-tk python-pyparsing
 
-# standardlib stuff
+# standard lib stuff
 import logging
 import time
 import re
@@ -26,18 +26,20 @@ import zipfile
 from math import sqrt, ceil, log1p
 from distutils import version
 import threading
+import platform
 
 # GUI stuff
-import Tkinter as tk
-import tkFileDialog
-import tkMessageBox
-import ttk
+import tkinter as tk
+import tkinter.filedialog as tk_file_dialog
+import tkinter.messagebox as tk_message_box
+import tkmacosx
+from tkinter import ttk
 from PIL import Image, ImageTk, ImageDraw
 
 # Tradeviz components
-from TradeGrammar import tradeSection
+from src.TradeGrammar import tradeSection
 import pyparsing
-import NodeGrammar
+import src.NodeGrammar as NodeGrammar
 
 # globals
 provinceBMP = "../res/worldmap.gif"
@@ -57,16 +59,23 @@ SMALL_FONT = ("Cambria", 12)
 BIG_FONT = ("Cambria", 18, "bold")
 
 VERSION = "1.5.0"
-COMPATIBILITY_VERSION = version.LooseVersion("1.21.1") # EU4 version
+COMPATIBILITY_VERSION = version.LooseVersion("1.21.1")  # EU4 version
 APP_NAME = "EU4 Trade Visualizer"
 
 
 class TradeViz:
     """Main class for Europa Universalis Trade Visualizer"""
-    def __init__(self):
-        logging.debug("Initializing application")
+
+    def __init__(self, debuglevel):
+        logging.basicConfig(handlers=[logging.StreamHandler(), logging.FileHandler("tradeviz.log", mode="w")],
+                            level=debuglevel, format="[%(asctime)s] %(levelname)s: %(message)s",
+                            datefmt="%Y/%m/%d %H:%M:%S")
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("Initializing application on %s, Python %s", platform.platform(), platform.python_version())
+
         self.root = tk.Tk()
         self.root.withdraw()
+        self.root.wm_attributes('-fullscreen', 'true')
 
         self.paneHeight = 195
         self.w, self.h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
@@ -78,7 +87,7 @@ class TradeViz:
         try:
             self.root.iconbitmap(r"../res/merchant.ico")
         except Exception as e:
-            logging.error("Error setting application icon (expected on Unix): %s" % e)
+            self.logger.error("Error setting application icon (expected on Unix): %s" % e)
 
         try:
             self.mapImg = Image.open(provinceBMP).convert("RGB")
@@ -90,11 +99,10 @@ class TradeViz:
             self.ratio = self.mapThumbSize[0] / float(self.mapWidth)
             self.provinceImage = ImageTk.PhotoImage(self.mapImg)
         except Exception as e:
-            logging.critical("Error preparing the world map!\n%s" % e)
+            self.logger.critical("Error preparing the world map!\n%s" % e)
 
-
-        logging.debug("Setting up GUI")
-        self.setupGUI()
+        self.logger.debug("Setting up GUI")
+        self.setup_gui()
         self.tradenodes = []
         self.player = ""
         self.date = ""
@@ -103,25 +111,22 @@ class TradeViz:
         self.preTradeSectionLines = 0
         self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(7, weight=1)
-        self.getConfig()
+        self.config = {}
+        self.get_config()
         self.root.deiconify()
 
         # self.root.focus_set()
-        logging.debug("Entering main loop")
+        self.logger.debug("Entering main loop")
         self.root.mainloop()
 
-
-    def getConfig(self):
+    def get_config(self):
         """Retrieve settings from config file"""
 
-        logging.debug("Getting config")
+        self.logger.debug("Getting config")
 
         if os.path.exists(r"../tradeviz.cfg"):
             with open(r"../tradeviz.cfg") as f:
                 self.config = json.load(f)
-
-        else:
-            self.config = {}
 
         if "savefile" in self.config:
             self.saveEntry.insert(0, self.config["savefile"])
@@ -140,28 +145,26 @@ class TradeViz:
                     "modPaths": [], "lastModPath": "", "arrowScale": "Square root"}
 
         for k in defaults:
-            if not k in self.config:
+            if k not in self.config:
                 self.config[k] = defaults[k]
 
-        if not "installDir" in self.config or not os.path.exists(self.config["installDir"]):
-            self.getInstallDir()
+        if "installDir" not in self.config or not os.path.exists(self.config["installDir"]):
+            self.get_install_dir()
 
-        self.saveConfig()
+        self.save_config()
 
-
-    def saveConfig(self):
+    def save_config(self):
         """Store settings in config file"""
 
-        logging.debug("Saving config")
+        self.logger.debug("Saving config")
 
         with open(r"../tradeviz.cfg", "w") as f:
             json.dump(self.config, f)
 
-
-    def getInstallDir(self):
+    def get_install_dir(self):
         """Find the EU4 install path and store it in the config for later use"""
 
-        logging.debug("Getting install dir")
+        self.logger.debug("Getting install dir")
 
         if sys.platform == "win32":
             import _winreg
@@ -169,15 +172,15 @@ class TradeViz:
                 key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, WinRegKey)
                 i = 0
                 while 1:
-                    quotedName, val, _type = _winreg.EnumValue(key, i)
-                    if quotedName == "InstallLocation":
-                        logging.info("Found install dir in Windows registry: %s" % val)
+                    quoted_name, val, _type = _winreg.EnumValue(key, i)
+                    if quoted_name == "InstallLocation":
+                        self.logger.info("Found install dir in Windows registry: %s" % val)
                         self.config["installDir"] = val
                         break
                     i += 1
 
             except WindowsError as e:
-                logging.error("Error while trying to find install dir in Windows registry: %s" % e)
+                self.logger.error("Error while trying to find install dir in Windows registry: %s" % e)
 
         elif sys.platform == "darwin":  # OS X
 
@@ -188,27 +191,26 @@ class TradeViz:
             if os.path.exists(LinuxDefaultPath):
                 self.config["installDir"] = LinuxDefaultPath
 
-        if not "installDir" in self.config:
+        if "installDir" not in self.config:
             self.config["installDir"] = ""
 
         if self.config["installDir"] == "" or not os.path.exists(self.config["installDir"]):
-            self.showError("EU4 installation folder not found!",
-                    "Europa Universalis 4 installation could not be found! " +
-                    "The program needs to read some files from the game to work correctly. " +
-                    "Please select your installation folder manually.")
-            folder = tkFileDialog.askdirectory(initialdir="/")
+            self.show_error("EU4 installation folder not found!",
+                            "Europa Universalis 4 installation could not be found! " +
+                            "The program needs to read some files from the game to work correctly. " +
+                            "Please select your installation folder manually.")
+            folder = tk_file_dialog.askdirectory(initialdir="/")
             if os.path.exists(os.path.join(folder, "common")):
                 self.config["installDir"] = folder
 
-
-    def setupGUI(self):
+    def setup_gui(self):
         """Initialize the user interface elements"""
 
         self.canvas = tk.Canvas(self.root, width=self.mapThumbSize[0], height=self.mapThumbSize[1],
                                 highlightthickness=0, border=5, relief="flat", bg=DARK_SLATE)
         self.canvas.grid(row=1, column=0, columnspan=4, sticky="W", padx=5)
-        self.canvas.bind("<Button-1>", self.clickMap)
-        self.setupTkStyles()
+        self.canvas.bind("<Button-1>", self.click_map)
+        self.setup_tk_styles()
         self.root.geometry("%dx%d+0+0" % (self.w, self.h))
         self.root.minsize(self.w, self.h - 20)
         self.root.maxsize(self.w, self.h - 20)
@@ -218,7 +220,7 @@ class TradeViz:
         # Labels, entries, checkboxes
 
         tk.Label(self.root, text="EU4 Trade Visualizer", bg=BANNER_BG, fg=WHITE, font=BIG_FONT).grid(
-                 row=0, column=0, columnspan=4, sticky="WE", padx=10, pady=(10, 5))
+            row=0, column=0, columnspan=4, sticky="WE", padx=10, pady=(10, 5))
 
         tk.Label(self.root, text="Save file:", bg=DARK_SLATE, fg=WHITE,
                  font=SMALL_FONT, anchor="w").grid(row=2, column=0, padx=6, pady=2, sticky="WE")
@@ -229,57 +231,62 @@ class TradeViz:
         tk.Label(self.root, text="Mod:", bg=DARK_SLATE, fg=WHITE,
                  font=SMALL_FONT).grid(row=3, column=0, padx=(6, 2), pady=2, sticky="W")
         self.modPathVar = tk.StringVar()
-        self.modPathComboBox = ttk.Combobox(self.root, textvariable=self.modPathVar, values=[""], state="readonly", font=SMALL_FONT, style="My.TCombobox")
+        self.modPathComboBox = ttk.Combobox(self.root, textvariable=self.modPathVar, values=[""], state="readonly",
+                                            font=SMALL_FONT, style="My.TCombobox")
         self.modPathComboBox.grid(row=3, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
-        self.modPathVar.trace("w", self.modPathChanged)
+        self.modPathVar.trace("w", self.mod_path_changed)
 
-        tk.Label(self.root, text="Nodes show:", bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT).grid(row=4, column=0, padx=(6, 2), pady=2, sticky="W")
+        tk.Label(self.root, text="Nodes show:", bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT).grid(row=4, column=0,
+                                                                                               padx=(6, 2), pady=2,
+                                                                                               sticky="W")
         self.nodesShowVar = tk.StringVar()
         self.nodesShowVar.set("Total value")
         self.nodesShow = ttk.Combobox(self.root, textvariable=self.nodesShowVar, values=["Local value", "Total value"],
                                       state="readonly", font=SMALL_FONT, style="My.TCombobox")
         self.nodesShow.grid(row=4, column=1, columnspan=2, sticky="W", padx=6, pady=2)
-        self.nodesShowVar.trace("w", self.nodesShowChanged)
+        self.nodesShowVar.trace("w", self.nodes_show_changed)
 
-        tk.Label(self.root, text="Arrow scaling:", bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT).grid(row=5, column=0, padx=(6, 2), pady=2, sticky="W")
+        tk.Label(self.root, text="Arrow scaling:", bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT).grid(row=5, column=0,
+                                                                                                  padx=(6, 2), pady=2,
+                                                                                                  sticky="W")
         self.arrowScaleVar = tk.StringVar()
         self.arrowScaleVar.set("Square root")
-        self.arrowScale = ttk.Combobox(self.root, textvariable=self.arrowScaleVar, values=["Linear", "Square root", "Logarithmic"],
-                                      state="readonly", font=SMALL_FONT, style="My.TCombobox")
+        self.arrowScale = ttk.Combobox(self.root, textvariable=self.arrowScaleVar,
+                                       values=["Linear", "Square root", "Logarithmic"],
+                                       state="readonly", font=SMALL_FONT, style="My.TCombobox")
         self.arrowScale.grid(row=5, column=1, columnspan=2, sticky="W", padx=6, pady=2)
-        self.arrowScaleVar.trace("w", self.arrowScaleChanged)
+        self.arrowScaleVar.trace("w", self.arrow_scale_changed)
 
         self.showZeroVar = tk.IntVar(value=1)
         self.showZeroes = tk.Checkbutton(self.root, text="Show unused trade routes",
                                          bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT, selectcolor=LIGHT_SLATE,
                                          activebackground=DARK_SLATE, activeforeground=WHITE,
-                                         variable=self.showZeroVar, command=self.toggleShowZeroes)
+                                         variable=self.showZeroVar, command=self.toggle_show_zeroes)
         self.showZeroes.grid(row=6, column=0, columnspan=2, sticky="W", padx=6, pady=2)
 
         # Buttons
 
-        self.browseFileBtn = tk.Button(self.root, text="Browse...", command=self.browseSave,
-                                       bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
-        self.browseFileBtn.grid(row=2, column=3, sticky="WSEN", padx=7, pady=3)
+        self.browseFileBtn = tkmacosx.Button(self.root, text="Browse...", command=self.browse_save,
+                                             bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
+        self.browseFileBtn.grid(row=2, column=3, sticky="nswe", padx=7, pady=3)
 
-        self.browseModFolderBtn = tk.Button(self.root, text="Browse...", command=self.browseMod,
-                                            bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
-        self.browseModFolderBtn.grid(row=3, column=3, sticky="WSEN", padx=7, pady=3, ipady=1)
+        self.browseModFolderBtn = tkmacosx.Button(self.root, text="Browse...", command=self.browse_mod,
+                                                  bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
+        self.browseModFolderBtn.grid(row=3, column=3, sticky="nswe", padx=7, pady=3, ipady=1)
 
-        self.goButton = tk.Button(self.root, text="Go!", command=self.go, bg=BTN_BG, fg=WHITE,
-                                  font=SMALL_FONT + ("bold",), relief="ridge")
+        self.goButton = tkmacosx.Button(self.root, text="Go!", command=self.go, bg=BTN_BG, fg=WHITE,
+                                        font=SMALL_FONT + ("bold",), relief="ridge")
         self.goButton.grid(row=7, column=1, sticky="SE", ipadx=20, padx=7, pady=15)
 
-        self.saveImgButton = tk.Button(self.root, text="Save Map", command=self.saveMap, bg=BTN_BG, fg=WHITE,
-                                       font=SMALL_FONT, relief="ridge")
+        self.saveImgButton = tkmacosx.Button(self.root, text="Save Map", command=self.save_map, bg=BTN_BG, fg=WHITE,
+                                             font=SMALL_FONT, relief="ridge")
         self.saveImgButton.grid(row=7, column=2, sticky="SE", padx=7, pady=15)
 
-        self.exitButton = tk.Button(self.root, text="Exit", command=lambda: self.exit("Button"),
-                                    bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
+        self.exitButton = tkmacosx.Button(self.root, text="Exit", command=lambda: self.exit("Button"),
+                                          bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
         self.exitButton.grid(row=7, column=3, sticky="SWE", padx=7, pady=15)
 
-
-    def setupTkStyles(self):
+    def setup_tk_styles(self):
         style = ttk.Style()
         style.element_create("plain.field", "from", "default")
 
@@ -287,142 +294,142 @@ class TradeViz:
         # http://wiki.tcl.tk/37973 says: "I could not find a way to set the listbox hover background and foreground."
         # -__-
         style.layout("My.TCombobox",
-                   [('Combobox.plain.field', {'children': [(
+                     [('Combobox.plain.field', {'children': [(
                          'Combobox.background', {'children': [(
                              'Combobox.padding', {'children': [(
                                  'Combobox.textarea', {'sticky': 'nswe'}
-                              )],
-                          'sticky': 'nswe'})],
-                     'sticky': 'nswe'}),
-                     ('Combobox.downarrow', {'sticky': 'nse'})], 'border':'0', 'sticky': 'nswe'})])
+                             )],
+                                 'sticky': 'nswe'})],
+                             'sticky': 'nswe'}),
+                         ('Combobox.downarrow', {'sticky': 'nse'})], 'border': '0', 'sticky': 'nswe'})])
 
         style.map("TCombobox", selectbackground=[('!focus', LIGHT_SLATE), ('focus', LIGHT_SLATE)],
-                               selectforeground=[('!focus', WHITE), ('focus', WHITE)])
+                  selectforeground=[('!focus', WHITE), ('focus', WHITE)])
         style.configure("My.TCombobox",
-                                        background=LIGHT_SLATE,
-                                        foreground=WHITE
-                                        )
+                        background=LIGHT_SLATE,
+                        foreground=WHITE
+                        )
 
-        listboxstyle = ttk.Style()
-        listboxstyle.configure("TListbox", background="#f00", foreground="#00f")
-        listboxstyle.map("TListbox", selectbackground=[('!focus', LIGHT_SLATE), ('focus', LIGHT_SLATE)],
-                               selectforeground=[('!focus', WHITE), ('focus', WHITE)])
-        listboxstyle.configure("TListbox",
-                                        background=LIGHT_SLATE,
-                                        foreground=WHITE
-                                        )
+        list_box_style = ttk.Style()
+        list_box_style.configure("TListbox", background="#f00", foreground="#00f")
+        list_box_style.map("TListbox", selectbackground=[('!focus', LIGHT_SLATE), ('focus', LIGHT_SLATE)],
+                           selectforeground=[('!focus', WHITE), ('focus', WHITE)])
+        list_box_style.configure("TListbox", background=LIGHT_SLATE, foreground=WHITE)
 
-    def browseSave(self, event=None):
-        """Let the user browseSave for an EU4 save file to be used by the program"""
+    def browse_save(self, event=None):
+        """Let the user browse for an EU4 save file to be used by the program"""
 
-        logging.debug("Browsing for save file")
+        self.logger.debug("Browsing for save file")
 
-        initialDir = "."
+        initial_dir = "."
         if "savefile" in self.config:
-            initialDir = os.path.dirname(self.config["savefile"])
+            initial_dir = os.path.dirname(self.config["savefile"])
 
-        filename = tkFileDialog.askopenfilename(filetypes=[("EU4 Saves", "*.eu4")], initialdir=initialDir)
-        logging.info("Selected save file %s" % os.path.basename(filename))
+        filename = tk_file_dialog.askopenfilename(filetypes=[("EU4 Saves", "*.eu4")], initialdir=initial_dir)
+        self.logger.info("Selected save file %s" % os.path.basename(filename))
         self.config["savefile"] = filename
-        self.saveConfig()
+        self.save_config()
 
         self.saveEntry.delete(0, tk.END)
         self.saveEntry.insert(0, self.config["savefile"])
 
+    def browse_mod(self, event=None):
 
-    def browseMod(self, event=None):
+        self.logger.debug("Browsing for mod")
 
-        logging.debug("Browsing for mod")
-
-        initDir = "/"
+        init_dir = "/"
         if self.config["lastModPath"]:
-            initDir = os.path.split(self.config["lastModPath"])[0]
+            init_dir = os.path.split(self.config["lastModPath"])[0]
         else:
             for path in self.config["modPaths"]:
                 if path:  # not empty
-                    initDir = os.path.basename(path)
+                    init_dir = os.path.basename(path)
                     break
 
-        modpath = tkFileDialog.askopenfilename(filetypes=[("EU4 Mods", "*.mod")], initialdir=initDir)
+        mod_path = tk_file_dialog.askopenfilename(filetypes=[("EU4 Mods", "*.mod")], initialdir=init_dir)
 
-        logging.debug("Selected mod path %s" % modpath)
+        self.logger.debug("Selected mod path %s" % mod_path)
 
-        modzip = modpath.replace(".mod", ".zip")
-        moddir = modpath.replace(".mod", "")
+        mod_zip = mod_path.replace(".mod", ".zip")
+        mod_dir = mod_path.replace(".mod", "")
 
-        if not os.path.exists(modzip) and not os.path.exists(moddir):
-            if modpath:
-                self.showError("ModDir %s and modzip %s do not appeat to be a valid mod" % (moddir, modzip),
-                               "This does not seem to be a valid mod path!")
+        if not os.path.exists(mod_zip) and not os.path.exists(mod_dir):
+            if mod_path:
+                self.show_error("mod_dir %s and mod_zip %s do not appear to be a valid mod" % (mod_dir, mod_zip),
+                                "This does not seem to be a valid mod path!")
             return
 
-        self.modPathVar.set(modpath)
-        if not modpath in self.config["modPaths"]:
-            self.config["modPaths"] += [modpath]
+        self.modPathVar.set(mod_path)
+        if mod_path not in self.config["modPaths"]:
+            self.config["modPaths"] += [mod_path]
 
-        self.config["lastModPath"] = modpath
-
+        self.config["lastModPath"] = mod_path
 
     def go(self, event=None):
         """Start parsing the selected save file and show the results on the map"""
 
-        logging.info("Processing save file")
+        self.logger.info("Processing save file")
         self.done = False
-        self.goTime = time.time()
-        self.clearMap()
-        waitIconThread = threading.Thread(target=self.doWaitIcon)
-        waitIconThread.start()
+        self.go_time = time.time()
+        self.clear_map()
+        wait_icon_thread = threading.Thread(target=self.do_wait_icon)
+        wait_icon_thread.start()
 
         if self.config["savefile"]:
 
             try:
-                txt = self.getSaveText()
+                txt = self.get_save_text()
             except ReadError as e:
-                self.showError("Failed to get savefile text: " + e.message,
-                                "This save file %s and can't be processed by %s" % (e.message, APP_NAME))
-                self.drawMap(True)
+                self.show_error("Failed to get savefile text",
+                                "This save file caused the following error: %s and can't be processed by %s" %
+                                (e.message, APP_NAME))
+                self.draw_map(True)
                 return
 
             try:
-                tradesection = txt[1]                                       # drop part before trade section starts
-                tradesection = tradesection.split("production_leader")[0]   # drop the part after the end
-                self.getTradeData(tradesection)
-                self.getNodeData()
+                trade_section = txt[1]  # drop part before trade section starts
+                trade_section = trade_section.split("production_leader")[0]  # drop the part after the end
+                self.get_trade_data(trade_section)
+                self.get_node_data()
 
             except Exception as e:
                 msg = "Tradeviz could not parse this file. You might be trying to open a corrupted save," + \
                       "or a save created with an unsupported mod or game version."
                 if type(e) == pyparsing.ParseException:
-                    print "----------------------------"
-                    print e.line
-                    print " "*(e.column - 1) + "^"
-                    print e
+                    e = pyparsing.ParseException(e)
+                    print("----------------------------")
+                    print(e.line)
+                    print(" " * (e.column - 1) + "^")
+                    print(e)
 
                     msg += "Error: " + str(e)
                 elif type(e) == IndexError:
-                    print e.message
-                    print ("+" + str(self.preTradeSectionLines))
+                    print(e.message)
+                    print("+" + str(self.preTradeSectionLines))
 
-                self.showError(e, "Can't read file! " + msg)
+                self.show_error(e, "Can't read file! " + msg)
 
             try:
-                self.drawMap(True)
+                self.draw_map(True)
             except InvalidTradeNodeException as e:
-                self.showError("Invalid trade node index: %s" % e,
-                               "Save file contains invalid trade node info. " +
-                               "If your save is from a modded game, please indicate the mod folder and try again.")
+                self.show_error("Invalid trade node index: %s" % e,
+                                "Save file contains invalid trade node info. " +
+                                "If your save is from a modded game, please indicate the mod folder and try again.")
 
-    def doWaitIcon(self, angle=0):
+    def do_wait_icon(self, angle=0):
 
-        my = (self.h) / 2 - self.paneHeight + 40
+        my = self.h / 2 - self.paneHeight + 40
         mx = self.w / 2
         radius = 16
-        arcs = []
-        arcs.append (self.canvas.create_arc(mx - radius, my - radius, mx + radius, my + radius, fill=WHITE, outline=WHITE, start=angle))
-        arcs.append (self.canvas.create_arc(mx - radius, my - radius, mx + radius, my + radius, fill=WHITE, outline=WHITE, start=(angle + 180)))
+        arcs = list()
+        arcs.append(
+            self.canvas.create_arc(mx - radius, my - radius, mx + radius, my + radius, fill=WHITE, outline=WHITE,
+                                   start=angle))
+        arcs.append(
+            self.canvas.create_arc(mx - radius, my - radius, mx + radius, my + radius, fill=WHITE, outline=WHITE,
+                                   start=(angle + 180)))
 
-        while not self.done and (time.time() - self.goTime) < 10:
-
+        while not self.done and (time.time() - self.go_time) < 10:
             self.canvas.itemconfig(arcs[0], start=angle)
             self.canvas.itemconfig(arcs[1], start=angle + 180)
 
@@ -433,8 +440,7 @@ class TradeViz:
         for arc in arcs:
             self.canvas.delete(arc)
 
-
-    def getSaveText(self):
+    def get_save_text(self):
         """Extract the text from the selected save file"""
 
         self.canvas.create_text((self.mapThumbSize[0] / 2, self.mapThumbSize[1] / 2),
@@ -442,19 +448,21 @@ class TradeViz:
                                 fill="white",
                                 font=SMALL_FONT)
         self.root.update()
-        logging.debug("Reading save file %s" % os.path.basename(self.config["savefile"]))
+        self.logger.debug("Reading save file %s" % os.path.basename(self.config["savefile"]))
 
         with open(self.config["savefile"]) as f:
-            txt = f.read()
+            try:
+                txt = f.read()
+            except UnicodeDecodeError as e:
+                raise ReadError(e.message)
 
-            txt = self.checkForCompression(txt)
-            self.checkForIronMan(txt)
-            self.checkForVersion(txt)
+            txt = self.check_for_compression(txt)
+            self.check_for_iron_man(txt)
+            self.check_for_version(txt)
 
             if not txt.startswith("EU4txt"):
-                logging.error("Savefile starts with %s, not EU4txt" % txt[:10])
+                self.logger.error("Savefile starts with %s, not EU4txt" % txt[:10])
                 raise ReadError("appears to be in an invalid format")
-
 
             for line in txt[:2000].split("\n"):
                 if "=" in line:
@@ -471,48 +479,47 @@ class TradeViz:
 
         return txt
 
-
-    def checkForIronMan(self, txt):
+    def check_for_iron_man(self, txt):
         if txt.startswith("EU4binM"):
             raise ReadError("appears to be an Ironman save")
 
-
-    def checkForCompression(self, txt):
-        """Check whether the save file text is compressed. If so, return uncompressed text, otherwise return the text unchanged"""
+    def check_for_compression(self, txt):
+        """Check whether the save file text is compressed.
+        If so, return uncompressed text, otherwise return the text unchanged"""
         if txt[:2] == "PK":
-            logging.info("Save file is compressed, unzipping...")
-            zippedSave = zipfile.ZipFile(self.config["savefile"])
-            filename = [x for x in zippedSave.namelist() if x.endswith(".eu4")][0]
-            unzippedSave = zippedSave.open(filename)
-            txt = unzippedSave.read()
+            self.logger.info("Save file is compressed, unzipping...")
+            zipped_save = zipfile.ZipFile(self.config["savefile"])
+            filename = [x for x in zipped_save.namelist() if x.endswith(".eu4")][0]
+            unzipped_save = zipped_save.open(filename)
+            txt = unzipped_save.read()
             return txt
         else:
             return txt
 
-
-    def checkForVersion(self, txt):
-        versionTuple = re.findall("first=(\d+)\s+second=(\d+)\s+third=(\d+)", txt[:500])
-        if versionTuple == []:
-            logging.warning("Could not find version info!")
+    def check_for_version(self, txt):
+        version_tuple = re.findall("first=(/d+)/s+second=(/d+)/s+third=(/d+)", txt[:500])
+        if version_tuple == list():
+            self.logger.warning("Could not find version info!")
         else:
-            versionTuple = versionTuple[0]
-            self.saveVersion = version.LooseVersion("%s.%s.%s" % versionTuple)
-            logging.info("Savegame version is %s" % self.saveVersion)
+            version_tuple = version_tuple[0]
+            self.saveVersion = version.LooseVersion("%s.%s.%s" % version_tuple)
+            self.logger.info("Save version is %s" % self.saveVersion)
             if self.saveVersion > COMPATIBILITY_VERSION:
-                tkMessageBox.showwarning("Version warning", ("This savegame is from an a newer EU4 version (%s) than " + \
-                                                "the version this tool designed to work for (%s). " + \
-                                                "It might not work correctly!") % (self.saveVersion.vstring, COMPATIBILITY_VERSION.vstring))
+                tk_message_box.showwarning(
+                    "Version warning",
+                    ("This save is from a newer EU4 version (%s) than the version this tool "
+                     "officially supports (%s). It might not work correctly!") %
+                    (self.saveVersion.vstring, COMPATIBILITY_VERSION.vstring))
 
-
-    def toggleShowZeroes(self, event=None):
+    def toggle_show_zeroes(self, event=None):
         """Turn the display of trade routes with a value of zero on or off"""
 
-        logging.debug("Show zeroes toggled")
+        self.logger.debug("Show zeroes toggled")
         self.config["showZeroRoutes"] = self.showZeroVar.get()
         self.root.update()
 
         if not self.zeroArrows and self.showZeroVar.get():
-            self.drawMap()
+            self.draw_map()
         else:
             for itemId in self.zeroArrows:
                 if self.showZeroVar.get():
@@ -520,182 +527,168 @@ class TradeViz:
                 else:
                     self.canvas.itemconfig(itemId, state="hidden")
 
-        self.saveConfig()
+        self.save_config()
 
-
-    def nodesShowChanged(self, *args):
+    def nodes_show_changed(self, *args):
         self.config["nodesShow"] = self.nodesShowVar.get()
-        self.drawMap()
+        self.draw_map()
 
-
-    def arrowScaleChanged(self, *args):
+    def arrow_scale_changed(self, *args):
         self.config["arrowScale"] = self.arrowScaleVar.get()
-        self.drawMap()
+        self.draw_map()
 
-
-    def modPathChanged(self, *args):
+    def mod_path_changed(self, *args):
         self.config["lastModPath"] = self.modPathVar.get()
-
 
     def exit(self, arg=""):
         """Close the program"""
 
-        self.saveConfig()
-        self.root.update()
-        logging.info("Exiting... (%s)" % arg)
+        self.save_config()
+        self.logger.info("Exiting... (%s)" % arg)
         logging.shutdown()
         self.root.quit()
 
-
-    def getTradeData(self, tradesection):
+    def get_trade_data(self, trade_section):
         """Extract the trade data from the selected save file"""
 
-        logging.info("Parsing %i chars" % len(tradesection))
+        self.logger.info("Parsing %i chars" % len(trade_section))
         t0 = time.time()
 
-        logging.debug("Parsing trade section...")
-        # pydev thinks tradeSection.parseString is an undefined import, but it's not
-        result = tradeSection.parseString(tradesection) # @UndefinedVariable
+        self.logger.debug("Parsing trade section...")
+        result = tradeSection.parseString(trade_section)
         d = result.asDict()
         r = {}
 
-        logging.info("Finished parsing save in %.3f seconds" % (time.time() - t0))
+        self.logger.info("Finished parsing save in %.3f seconds" % (time.time() - t0))
 
-        self.maxIncoming = 0
-        self.maxCurrent = 0
-        self.maxLocal = 0
+        self.max_incoming = 0
+        self.max_current = 0
+        self.max_local = 0
 
-        logging.debug("Processing parsed results")
+        self.logger.debug("Processing parsed results")
 
         for n in d["Nodes"]:
             d = n.asDict()
             node = {}
             for k in d:
-                if k not in ["quotedName" , "incomingFromNode", "incomingValue"]:
+                if k not in ["quotedName", "incomingFromNode", "incomingValue"]:
                     node[k] = d[k]
                 elif k in ["incomingFromNode", "incomingValue"]:
                     node[k] = d[k].asList()
 
                 if k == "currentValue":
-                    self.maxCurrent = max(self.maxCurrent, d[k])
+                    self.max_current = max(self.max_current, d[k])
                 if k == "localValue":
-                    self.maxLocal = max(self.maxLocal, d[k])
+                    self.max_local = max(self.max_local, d[k])
                 if k == "incomingValue":
-                    self.maxIncoming = max(self.maxIncoming, *d[k].asList())
+                    self.max_incoming = max(self.max_incoming, *d[k].asList())
 
             r[d["quotedName"][0]] = node
 
         try:
-            logging.debug("Seville:\n\t%s" % r["sevilla"])
-            logging.debug("max current value: %s" % self.maxCurrent)
-            logging.debug("max incoming value: %s" % self.maxIncoming)
+            self.logger.debug("Seville:\n\t%s" % r["sevilla"])
+            self.logger.debug("max current value: %s" % self.max_current)
+            self.logger.debug("max incoming value: %s" % self.max_incoming)
         except KeyError:
-            logging.warn("Trade node Seville not found! Save file is either from a modded game or malformed!")
+            self.logger.warning("Trade node Seville not found! Save file is either from a modded game or malformed!")
 
-        self.nodeData = r
+        self.node_data = r
 
-
-    def getNodeName(self, nodeID):
-        node = self.tradenodes[nodeID - 1]
+    def get_node_name(self, node_id):
+        node = self.tradenodes[node_id - 1]
         return node[0]
 
+    def get_node_location(self, node_id):
+        if node_id > len(self.tradenodes) + 1:
+            raise InvalidTradeNodeException(node_id)
+        node = self.tradenodes[node_id - 1]
+        province_id = node[1]
 
-    def getNodeLocation(self, nodeID):
-        if nodeID > len(self.tradenodes) + 1:
-            raise InvalidTradeNodeException(nodeID)
-        node = self.tradenodes[nodeID - 1]
-        provinceID = node[1]
-
-
-        for loc in self.provinceLocations:
-            if loc[0] == provinceID:
+        for loc in self.province_locations:
+            if loc[0] == province_id:
                 return loc[1:]
 
-
-    def getNodeData(self):
+    def get_node_data(self):
         """Retrieve trade node and province information from the game or mod files"""
 
-        logging.debug("Getting node data")
+        self.logger.debug("Getting node data")
 
         tradenodes = r"common/tradenodes/00_tradenodes.txt"
         positions = r"map/positions.txt"
 
-        modPath = self.modPathComboBox.get()
-        modzip = modPath.replace(".mod", ".zip")
-        moddir = modPath.replace(".mod", "")
+        mod_path = self.modPathComboBox.get()
+        mod_zip = mod_path.replace(".mod", ".zip")
+        mod_dir = mod_path.replace(".mod", "")
 
-        modType = ""
-        if modPath and os.path.isdir(moddir):
-            modType = "dir"
-        elif os.path.exists(modzip):
-            modType = "zip"
+        mod_type = ""
+        if mod_path and os.path.isdir(mod_dir):
+            mod_type = "dir"
+        elif os.path.exists(mod_zip):
+            mod_type = "zip"
 
-        # Get all tradenode provinceIDs, modded or default
+        # Get all trade node provinceIDs, modded or default
         try:
-            if modType == "zip":
-                z = zipfile.ZipFile(modzip)
+            if mod_type == "zip":
+                z = zipfile.ZipFile(mod_zip)
                 if os.path.normpath(tradenodes) in z.namelist():
-                    logging.debug("Using tradenodes file from zipped mod")
+                    self.logger.debug("Using tradenodes file from zipped mod")
                     with z.open(tradenodes) as f:
                         txt = f.read()
                 else:
-                    tradenodesfile = os.path.join(self.config["installDir"], tradenodes)
-                    logging.debug("Using default tradenodes file")
-
-                with open(tradenodesfile, "r") as f:
-                    txt = f.read()
+                    trade_nodes_file = os.path.join(self.config["installDir"], tradenodes)
+                    self.logger.debug("Using default tradenodes file")
+                    with open(trade_nodes_file, "r") as f:
+                        txt = f.read()
 
             else:
-                if modType == "dir" and os.path.exists(os.path.join(moddir, tradenodes)):
-                    tradenodesfile = os.path.join(moddir, tradenodes)
-                    logging.debug("Using tradenodes file from mod directory")
+                if mod_type == "dir" and os.path.exists(os.path.join(mod_dir, tradenodes)):
+                    trade_nodes_file = os.path.join(mod_dir, tradenodes)
+                    self.logger.debug("Using tradenodes file from mod directory")
                 else:
-                    tradenodesfile = os.path.join(self.config["installDir"], tradenodes)
-                    logging.debug("Using default tradenodes file")
+                    trade_nodes_file = os.path.join(self.config["installDir"], tradenodes)
+                    self.logger.debug("Using default tradenodes file")
 
-                with open(tradenodesfile, "r") as f:
+                with open(trade_nodes_file, "r") as f:
                     txt = f.read()
         except IOError as e:
-            logging.critical("Could not find trade nodes file: %s" % e)
+            self.logger.critical("Could not find trade nodes file: %s" % e)
 
-        txt = removeComments(txt)
+        txt = remove_comments(txt)
         tradenodes = NodeGrammar.nodes.parseString(txt)
-        # for tn in tradenodes: print tn
-        logging.info("%i tradenodes found in %i chars" % (len(tradenodes), len(txt)))
+        # for tn in tradenodes: print(tn)
+        self.logger.info("%i tradenodes found in %i chars" % (len(tradenodes), len(txt)))
 
-        for i, tradenode in enumerate(tradenodes):
-            tradenodes[i] = (tradenode["name"], tradenode["location"])
+        for i, trade_node in enumerate(tradenodes):
+            tradenodes[i] = (trade_node["name"], trade_node["location"])
 
         self.tradenodes = tradenodes
 
         # Now get province positions
         try:
-            if modType == "zip":
-                z = zipfile.ZipFile(modzip)
+            if mod_type == "zip":
+                z = zipfile.ZipFile(mod_zip)
                 if os.path.normpath(positions) in z.namelist():
-                    logging.debug("Using positions file from zipped mod")
+                    self.logger.debug("Using positions file from zipped mod")
                     with z.open(positions) as f:
                         txt = f.read()
                 else:
-                    tradenodesfile = os.path.join(self.config["installDir"], positions)
-                    logging.debug("Using default tradenodes file")
+                    trade_nodes_file = os.path.join(self.config["installDir"], positions)
+                    self.logger.debug("Using default tradenodes file")
 
-                with open(tradenodesfile, "r") as f:
+                with open(trade_nodes_file, "r") as f:
                     txt = f.read()
             else:
-                if modType == "dir" and os.path.exists(os.path.join(moddir, positions)):
-                    positionsfile = os.path.join(moddir, positions)
-                    logging.debug("Using positions file from mod directory")
+                if mod_type == "dir" and os.path.exists(os.path.join(mod_dir, positions)):
+                    positions_file = os.path.join(mod_dir, positions)
+                    self.logger.debug("Using positions file from mod directory")
                 else:
-                    positionsfile = os.path.join(self.config["installDir"], positions)
-                    logging.debug("Using default positions file")
+                    positions_file = os.path.join(self.config["installDir"], positions)
+                    self.logger.debug("Using default positions file")
 
-
-                with open(positionsfile, "r") as f:
+                with open(positions_file, "r") as f:
                     txt = f.read()
         except IOError as e:
-            logging.critical("Could not find locations file: %s" % e)
-
+            self.logger.critical("Could not find locations file: %s" % e)
 
         locations = re.findall(r"(\d+)=\s*{\s*position=\s*{\s*([\d\.]*)\s*([\d\.]*)", txt)
         for i in range(len(locations)):
@@ -703,55 +696,53 @@ class TradeViz:
 
             locations[i] = (int(a), float(b), self.mapHeight - float(c))  # invert y coordinate :)
 
-        self.provinceLocations = locations
-        logging.info("Found %i province locations" % len(self.provinceLocations))
+        self.province_locations = locations
+        self.logger.info("Found %i province locations" % len(self.province_locations))
 
-
-    def getNodeRadius(self, node):
+    def get_node_radius(self, node):
         """Calculate the radius for a trade node given its value"""
 
         if self.config["nodesShow"] == "Total value":
-            value = node["currentValue"] / self.maxCurrent
+            value = node["currentValue"] / self.max_current
         elif self.config["nodesShow"] == "Local value":
-            value = node["localValue"] / self.maxLocal
+            value = node["localValue"] / self.max_local
         else:
-            logging.error("Invalid nodesShow option: %s" % self.config["nodesShow"])
+            self.logger.error("Invalid nodesShow option: %s" % self.config["nodesShow"])
+            value = 0
 
         return 5 + int(7 * value)
 
+    def get_line_width(self, value):
 
-    def getLineWidth(self, value):
-
-        arrowScaleStyle = self.arrowScaleVar.get()
+        arrow_scale_style = self.arrowScaleVar.get()
 
         if value <= 0:
             return 1
 
-        elif arrowScaleStyle == "Linear":
-            return int(ceil(10 * value / self.maxIncoming))
+        elif arrow_scale_style == "Linear":
+            return int(ceil(10 * value / self.max_incoming))
 
-        elif arrowScaleStyle == "Square root":
-            return int(round(10 * sqrt(value) / sqrt(self.maxIncoming)))
+        elif arrow_scale_style == "Square root":
+            return int(round(10 * sqrt(value) / sqrt(self.max_incoming)))
 
-        elif arrowScaleStyle == "Logarithmic":
-            return int(round(10 * log1p(value) / log1p(self.maxIncoming)))
+        elif arrow_scale_style == "Logarithmic":
+            return int(round(10 * log1p(value) / log1p(self.max_incoming)))
 
-
-    def intersectsNode(self, node1, node2):
+    def intersects_node(self, node1, node2):
         """
         Check whether a trade route intersects a trade node circle (other than source and target nodes)
         See http://mathworld.wolfram.com/Circle-LineIntersection.html
         """
 
         for n, node3 in enumerate(self.tradenodes):
-            nx, ny = self.getNodeLocation(n + 1)
-            data = self.nodeData[node3[0]]
+            nx, ny = self.get_node_location(n + 1)
+            data = self.node_data[node3[0]]
 
-            r = self.getNodeRadius(data) / self.ratio
+            r = self.get_node_radius(data) / self.ratio
 
             # assume circle center is at 0,0
-            x2, y2 = self.getNodeLocation(node1)
-            x1, y1 = self.getNodeLocation(node2)
+            x2, y2 = self.get_node_location(node1)
+            x1, y1 = self.get_node_location(node2)
             x1 -= nx
             y1 -= ny
             x2 -= nx
@@ -767,233 +758,226 @@ class TradeViz:
             det = r ** 2 * dr ** 2 - D ** 2
 
             if det > 0:
-            # infinite line intersects, check whether the center node is inside the rectangle defined by the other nodes
-                if min(x1, x2) < 0 and max(x1, x2) > 0 and min(y1, y2) < 0 and max(y1, y2) > 0:
-                    logging.debug("%s is intersected by a trade route between %s and %s" %
-                                  (self.getNodeName(n + 1), self.getNodeName(node1), self.getNodeName(node2)))
+                # infinite line intersects, check whether the center node is inside the rectangle
+                # defined by the other nodes
+                if min(x1, x2) < 0 < max(x1, x2) and min(y1, y2) < 0 < max(y1, y2):
+                    self.logger.debug("%s is intersected by a trade route between %s and %s" %
+                                      (self.get_node_name(n + 1), self.get_node_name(node1), self.get_node_name(node2)))
                     return True
 
-
-    def drawArrow(self, fromNode, toNode, value, toRadius):
+    def draw_arrow(self, from_node, to_node, value, to_radius):
         """Draw an arrow between two nodes on the map"""
 
         if value <= 0 and not self.showZeroVar.get():
             return
 
-        x2, y2 = self.getNodeLocation(fromNode)
-        x, y = self.getNodeLocation(toNode)
-        isPacific = self.pacificTrade(x, y, x2, y2)
+        x2, y2 = self.get_node_location(from_node)
+        x, y = self.get_node_location(to_node)
+        is_pacific = self.pacific_trade(x, y, x2, y2)
 
         # adjust for target node radius
         dx = x - x2
-        if isPacific:
+        if is_pacific:
             if x > x2:
                 dx = x2 - self.mapWidth - x
             else:
                 dx = self.mapWidth - x + x2
         dy = y - y2
-        l = max(1, sqrt(dx ** 2 + dy ** 2))
-        radiusFraction = toRadius / l
+        length = max(1.0, sqrt(dx ** 2 + dy ** 2))
+        radius_fraction = to_radius / length
 
         # adjust to stop at node circle's edge
-        x -= 3 * dx * radiusFraction
-        y -= 3 * dy * radiusFraction
+        x -= 3 * dx * radius_fraction
+        y -= 3 * dy * radius_fraction
 
         # rescale to unit length
-        dx /= l
-        dy /= l
+        dx /= length
+        dy /= length
 
         ratio = self.ratio
-        lineWidth = self.getLineWidth(value)
-        arrowShape = (max(8, lineWidth * 2), max(10, lineWidth * 2.5), max(5, lineWidth))
-        w = max(5 / ratio, 1.5 * lineWidth / ratio)
-        linecolor = "#000" if value > 0 else "#ff0"
+        line_width = self.get_line_width(value)
+        arrow_shape = (max(8, line_width * 2), max(10.0, line_width * 2.5), max(5, line_width))
+        w = max(5 / ratio, 1.5 * line_width / ratio)
+        line_color = "#000" if value > 0 else "#ff0"
 
-        if not isPacific:
+        if not is_pacific:
 
-            centerOfLine = ((x + x2) / 2 * ratio, (y + y2) / 2 * ratio)
+            center_of_line = ((x + x2) / 2 * ratio, (y + y2) / 2 * ratio)
 
-            if self.intersectsNode(fromNode, toNode):
+            if self.intersects_node(from_node, to_node):
                 d = 20
-                centerOfLine = (centerOfLine[0] + d, centerOfLine[1] + d)
-                z1 = self.canvas.create_line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
-                        width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
-                z2 = self.canvas.create_line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
-                        width=lineWidth, fill=linecolor)
+                center_of_line = (center_of_line[0] + d, center_of_line[1] + d)
+                z1 = self.canvas.create_line((x * ratio, y * ratio, center_of_line[0], center_of_line[1]),
+                                             width=line_width, arrow=tk.FIRST, arrowshape=arrow_shape, fill=line_color)
+                z2 = self.canvas.create_line((center_of_line[0], center_of_line[1], x2 * ratio, y2 * ratio),
+                                             width=line_width, fill=line_color)
 
-                z3 = self.mapDraw.line((x * ratio , y * ratio , centerOfLine[0] , centerOfLine[1]),
-                        width=lineWidth, fill=linecolor)
-                z4 = self.mapDraw.polygon(
-                                        (x * ratio, y * ratio,
-                                        (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
-                                        (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
-                                    ),
-                                     outline=linecolor, fill=linecolor)
+                z3 = self.map_draw.line((x * ratio, y * ratio, center_of_line[0], center_of_line[1]),
+                                        width=line_width, fill=line_color)
+                z4 = self.map_draw.polygon(
+                    (x * ratio, y * ratio,
+                     (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
+                     (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
+                     ),
+                    outline=line_color, fill=line_color)
 
-                z4 = self.mapDraw.line((centerOfLine[0] , centerOfLine[1], x2 * ratio , y2 * ratio),
-                        width=lineWidth, fill=linecolor)
+                z5 = self.map_draw.line((center_of_line[0], center_of_line[1], x2 * ratio, y2 * ratio),
+                                        width=line_width, fill=line_color)
 
                 if value == 0:
-                    self.zeroArrows += [z1, z2, z3, z4]
-
+                    self.zeroArrows += [z1, z2, z3, z4, z5]
 
             else:
-                z1 = self.canvas.create_line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                        width=lineWidth, arrow=tk.FIRST, arrowshape=arrowShape, fill=linecolor)
+                z1 = self.canvas.create_line((x * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                                             width=line_width, arrow=tk.FIRST, arrowshape=arrow_shape, fill=line_color)
 
-                z2 = self.mapDraw.line((x * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                        width=lineWidth, fill=linecolor)
+                z2 = self.map_draw.line((x * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                                        width=line_width, fill=line_color)
 
-                z3 = self.mapDraw.polygon(
-                                    (x * ratio, y * ratio,
-                                    (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
-                                    (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
-                                    ),
-                                     outline=linecolor, fill=linecolor)
+                z3 = self.map_draw.polygon(
+                    (x * ratio, y * ratio,
+                     (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
+                     (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
+                     ),
+                    outline=line_color, fill=line_color)
 
                 if value == 0:
                     self.zeroArrows += [z1, z2, z3]
 
-            self.arrowLabels.append([centerOfLine, value])
-
+            self.arrow_labels.append([center_of_line, value])
 
         else:  # Trade route crosses edge of map
 
             if x < x2:  # Asia to America
-                z0 = self.canvas.create_line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
-                                    width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
-                z1 = self.canvas.create_line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                                    width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
+                z0 = self.canvas.create_line((x * ratio, y * ratio, (-self.mapWidth + x2) * ratio, y2 * ratio),
+                                             width=1, fill=line_color, arrow=tk.FIRST, arrowshape=arrow_shape)
+                z1 = self.canvas.create_line(((self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                                             width=1, fill=line_color, arrow=tk.FIRST, arrowshape=arrow_shape)
 
-                z2 = self.mapDraw.line((x * ratio , y * ratio , (-self.mapWidth + x2) * ratio , y2 * ratio),
-                                    width=1, fill=linecolor)
-                z3 = self.mapDraw.line(((self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                                    width=1, fill=linecolor)
-                z4 = self.mapDraw.polygon(
-                                        (x * ratio, y * ratio,
-                                        (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
-                                        (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
-                                    ),
-                                     outline=linecolor, fill=linecolor)
+                z2 = self.map_draw.line((x * ratio, y * ratio, (-self.mapWidth + x2) * ratio, y2 * ratio),
+                                        width=1, fill=line_color)
+                z3 = self.map_draw.line(((self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                                        width=1, fill=line_color)
+                z4 = self.map_draw.polygon(
+                    (x * ratio, y * ratio,
+                     (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
+                     (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
+                     ),
+                    outline=line_color, fill=line_color)
 
                 # fraction of trade route left of "date line"
                 f = abs(self.mapWidth - float(x2)) / (self.mapWidth - abs(x - x2))
                 # y coordinate where trade route crosses date line
                 yf = y2 + f * (y - y2)
 
-                centerOfLine = (x / 2 * ratio, (yf + y) / 2 * ratio)
+                center_of_line = (x / 2 * ratio, (yf + y) / 2 * ratio)
                 if value == 0:
                     self.zeroArrows += [z0, z1, z2, z3, z4]
 
             else:  # Americas to Asia
-                z0 = self.canvas.create_line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
-                                    width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
-                z1 = self.canvas.create_line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                                    width=1, fill=linecolor, arrow=tk.FIRST, arrowshape=arrowShape)
+                z0 = self.canvas.create_line((x * ratio, y * ratio, (self.mapWidth + x2) * ratio, y2 * ratio),
+                                             width=1, fill=line_color, arrow=tk.FIRST, arrowshape=arrow_shape)
+                z1 = self.canvas.create_line(((-self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                                             width=1, fill=line_color, arrow=tk.FIRST, arrowshape=arrow_shape)
 
-                z2 = self.mapDraw.line((x * ratio , y * ratio , (self.mapWidth + x2) * ratio , y2 * ratio),
-                                    width=1, fill=linecolor)
-                z3 = self.mapDraw.line(((-self.mapWidth + x) * ratio , y * ratio , x2 * ratio , y2 * ratio),
-                                    width=1, fill=linecolor)
-                z4 = self.mapDraw.polygon(
-                                        (x * ratio, y * ratio,
-                                        (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
-                                        (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
-                                    ),
-                                     outline=linecolor, fill=linecolor)
+                z2 = self.map_draw.line((x * ratio, y * ratio, (self.mapWidth + x2) * ratio, y2 * ratio),
+                                        width=1, fill=line_color)
+                z3 = self.map_draw.line(((-self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                                        width=1, fill=line_color)
+                z4 = self.map_draw.polygon(
+                    (x * ratio, y * ratio,
+                     (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
+                     (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
+                     ),
+                    outline=line_color, fill=line_color)
 
                 f = abs(self.mapWidth - float(x)) / (self.mapWidth - abs(x - x2))
                 yf = y + f * (y2 - y)
 
-                centerOfLine = ((self.mapWidth + x) / 2 * ratio, (yf + y) / 2 * ratio)
+                center_of_line = ((self.mapWidth + x) / 2 * ratio, (yf + y) / 2 * ratio)
 
-            self.arrowLabels.append([centerOfLine, value])
+            self.arrow_labels.append([center_of_line, value])
 
             if value == 0:
                 self.zeroArrows += [z0, z1, z2, z3, z4]
 
-
-    def clearMap(self, update=False):
+    def clear_map(self, update=False):
         self.canvas.create_image((0, 0), image=self.provinceImage, anchor=tk.NW)
         self.drawImg = self.mapImg.convert("RGB")
-        self.mapDraw = ImageDraw.Draw(self.drawImg)
+        self.map_draw = ImageDraw.Draw(self.drawImg)
         if update:
             self.canvas.update()
 
-
-    def drawMap(self, clear=False):
+    def draw_map(self, clear=False):
         """Top level method for redrawing the world map and trade network"""
 
-        logging.debug("Drawing map..")
+        self.logger.debug("Drawing map..")
         t0 = time.time()
 
-        self.clearMap(clear)
+        self.clear_map(clear)
         self.done = True
         ratio = self.ratio
         self.zeroArrows = []
 
-
         # draw incoming trade arrows
         t1 = time.time()
-        nArrows = 0
-        self.arrowLabels = []
+        n_arrows = 0
+        self.arrow_labels = []
 
         for n, node in enumerate(self.tradenodes):
-            x, y = self.getNodeLocation(n + 1)
-
             try:
-                data = self.nodeData[node[0]]
+                data = self.node_data[node[0]]
 
                 if "incomingValue" in data:
                     for i, value in enumerate(data["incomingValue"]):
-                        fromNodeNr = data["incomingFromNode"][i]
-                        if fromNodeNr >= len(self.tradenodes):
+                        from_node_nr = data["incomingFromNode"][i]
+                        if from_node_nr >= len(self.tradenodes):
                             continue
-                        self.drawArrow(fromNodeNr, n + 1, value, self.getNodeRadius(data))
-                        nArrows += 1
+                        self.draw_arrow(from_node_nr, n + 1, value, self.get_node_radius(data))
+                        n_arrows += 1
             except KeyError:
-                self.showError("Encountered unknown trade node %s!" % node[0],
-                               "An invalid trade node was encountered. Savegame doesn't match" +
-                               " currently installed EU4 version, or incorrect mod selected.")
+                self.show_error("Encountered unknown trade node %s!" % node[0],
+                                "An invalid trade node was encountered. Save doesn't match" +
+                                " currently installed EU4 version, or incorrect mod selected.")
                 return
-        logging.debug("Drew %i arrows in %.2fs" % (nArrows, time.time() - t1))
+        self.logger.debug("Drew %i arrows in %.2fs" % (n_arrows, time.time() - t1))
 
         # draw trade arrow labels
-        for [centerOfLine, value] in self.arrowLabels:
+        for [centerOfLine, value] in self.arrow_labels:
             if value > 0 or self.showZeroVar.get():
-                valueStr = "%i" % ceil(value) if (value >= 2 or value <= 0) else ("%.1f" % value)
-                z5 = self.canvas.create_text(centerOfLine, text=valueStr, fill=WHITE)
-                z6 = self.mapDraw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), valueStr, fill=WHITE)
+                value_str = "%i" % ceil(value) if (value >= 2 or value <= 0) else ("%.1f" % value)
+                z5 = self.canvas.create_text(centerOfLine, text=value_str, fill=WHITE)
+                z6 = self.map_draw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), value_str, fill=WHITE)
 
                 if value == 0:
                     self.zeroArrows += [z5, z6]
 
         # draw trade nodes and their current value
-        nNodes = 0
+        n_nodes = 0
         for n, node in enumerate(self.tradenodes):
-            x, y = self.getNodeLocation(n + 1)
+            x, y = self.get_node_location(n + 1)
 
-            data = self.nodeData[node[0]]
-            s = self.getNodeRadius(data)
+            data = self.node_data[node[0]]
+            s = self.get_node_radius(data)
 
             if self.config["nodesShow"] == "Total value":
                 v = data["currentValue"]
-                tradeNodeColor = "#d00"
+                trade_node_color = "#d00"
             elif self.config["nodesShow"] == "Local value":
                 v = data["localValue"]
-                tradeNodeColor = "#90c"
+                trade_node_color = "#90c"
 
             digits = len("%i" % v)
 
             self.canvas.create_oval((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
-                                    outline=tradeNodeColor, fill=tradeNodeColor)
+                                    outline=trade_node_color, fill=trade_node_color)
             self.canvas.create_text((x * ratio, y * ratio), text=int(v), fill="white")
 
-            self.mapDraw.ellipse((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
-                                    outline=tradeNodeColor, fill=tradeNodeColor)
-            self.mapDraw.text((x * ratio - 3 * digits, y * ratio - 4), "%d" % v, fill=WHITE)
-            nNodes += 1
-        logging.debug("Drew %i nodes" % nNodes)
+            self.map_draw.ellipse((x * ratio - s, y * ratio - s, x * ratio + s, y * ratio + s),
+                                  outline=trade_node_color, fill=trade_node_color)
+            self.map_draw.text((x * ratio - 3 * digits, y * ratio - 4), "%d" % v, fill=WHITE)
+            n_nodes += 1
+        self.logger.debug("Drew %i nodes" % n_nodes)
 
         self.canvas.create_text((10, self.mapHeight * ratio - 60), anchor="nw",
                                 text="Player: %s" % self.player, fill="white")
@@ -1004,60 +988,58 @@ class TradeViz:
         self.canvas.create_text((10, self.mapHeight * ratio - 20), anchor="nw",
                                 text="Version: %s" % self.saveVersion, fill="white")
 
-        self.mapDraw.text((10, self.mapHeight * ratio - 44), "Player: %s" % self.player, fill=WHITE)
-        self.mapDraw.text((10, self.mapHeight * ratio - 24), "Date: %s" % self.date, fill=WHITE)
+        self.map_draw.text((10, self.mapHeight * ratio - 44), "Player: %s" % self.player, fill=WHITE)
+        self.map_draw.text((10, self.mapHeight * ratio - 24), "Date: %s" % self.date, fill=WHITE)
 
-        logging.info("Finished drawing map in %.3f seconds" % (time.time() - t0))
+        self.logger.info("Finished drawing map in %.3f seconds" % (time.time() - t0))
 
-
-    def pacificTrade(self, x, y , x2, y2):
+    def pacific_trade(self, x, y, x2, y2):
         """Check whether a line goes around the east/west edge of the map"""
 
-        directDist = sqrt(abs(x - x2) ** 2 + abs(y - y2) ** 2)
-        xDistAcross = self.mapWidth - abs(x - x2)
-        distAcross = sqrt(xDistAcross ** 2 + abs(y - y2) ** 2)
+        direct_dist = sqrt(abs(x - x2) ** 2 + abs(y - y2) ** 2)
+        x_dist_across = self.mapWidth - abs(x - x2)
+        dist_across = sqrt(x_dist_across ** 2 + abs(y - y2) ** 2)
 
-        return (distAcross < directDist)
+        return dist_across < direct_dist
 
-
-    def saveMap(self):
+    def save_map(self):
         """Export the current map as a .gif image"""
 
-        logging.info("Saving map image...")
+        self.logger.info("Saving map image...")
 
-        savename = tkFileDialog.asksaveasfilename(defaultextension=".gif", filetypes=[("GIF file", ".gif")], initialdir=os.path.expanduser("~"),
-                                                  title="Save as..")
-        if savename:
+        save_name = tk_file_dialog.asksaveasfilename(
+            defaultextension=".gif", filetypes=[("GIF file", ".gif")],
+            initialdir=os.path.expanduser("~"), title="Save as..")
+        if save_name:
             try:
                 self.drawImg = self.drawImg.convert("P", palette=Image.ADAPTIVE, dither=Image.NONE, colors=8)
-                self.drawImg.save(savename)
+                self.drawImg.save(save_name)
             except Exception as e:
-                logging.error("Problem saving map image: %s" % e)
+                self.logger.error("Problem saving map image: %s" % e)
 
-
-    def clickMap(self, *args):
+    def click_map(self, *args):
         # TODO: implement zoom function
         x = args[0].x
         y = args[0].y
         self.zoomed = not self.zoomed
 
-        logging.info("Map clicked at (%i, %i), self.zoomed is now %s" % (x, y, self.zoomed))
+        self.logger.info("Map clicked at (%i, %i), self.zoomed is now %s" % (x, y, self.zoomed))
+
+    def show_error(self, log_message, user_message):
+        if not user_message:
+            user_message = log_message
+        self.logger.error(log_message)
+        tk_message_box.showerror("Error", user_message)
 
 
-    def showError(self, logMessage, userMessage):
-        if not userMessage:
-            userMessage = logMessage
-        logging.error(logMessage)
-        tkMessageBox.showerror("Error", userMessage)
-
-
-def sign(self, v):
+def sign(v):
     if v < 0:
         return -1
     else:
         return 1
 
-def removeComments(txt):
+
+def remove_comments(txt):
     lines = txt.split("\n")
     for i in range(len(lines)):
         lines[i] = lines[i].split("#")[0]
@@ -1090,8 +1072,4 @@ if __name__ == "__main__":
         if arg in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
             debuglevel = eval("logging." + arg)
 
-    logging.basicConfig(filename="tradeviz.log", filemode="w", level=debuglevel,
-                        format="[%(asctime)s] %(levelname)s: %(message)s",
-                        datefmt="%Y/%m/%d %H:%M:%S")
-
-    tv = TradeViz()
+    tv = TradeViz(debuglevel)

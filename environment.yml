@@ -1,0 +1,10 @@
+name: tradeviz
+channels:
+    - conda-forge
+dependencies:
+    - python=3.7
+    - pip
+    - pip:
+        - pillow
+        - pyparsing
+        - tkmacosx

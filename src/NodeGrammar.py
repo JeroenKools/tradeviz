@@ -37,13 +37,13 @@ if __name__ == "__main__":
     f = open(r"C:\Program Files (x86)\Steam\steamapps\common\Europa Universalis IV\common\tradenodes\00_tradenodes.txt")
     txt = f.read()
     import tradeviz
-    txt = tradeviz.removeComments(txt)
+    txt = tradeviz.remove_comments(txt)
     results = nodes.parseString(txt)
 
     nLocations = txt.count("location")
     nFound = len(results)
 
-    print "Found %i out of %i tradenodes" % (nFound, nLocations)
+    print("Found %i out of %i tradenodes" % (nFound, nLocations))
 
 #     for r in results:
 #         print r["name"], r["location"]
