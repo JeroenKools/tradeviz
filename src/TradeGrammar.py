@@ -1,4 +1,4 @@
-from pyparsing import ZeroOrMore, OneOrMore, Optional, Literal, Word, alphas, nums
+from pyparsing import ZeroOrMore, OneOrMore, Optional, Literal, Word, alphas, nums, Group
 
 '''
 Created on 31 aug. 2013
@@ -7,7 +7,6 @@ Pyparsing grammar describing the trade section of EU4 save files
 
 @author: Jeroen Kools
 '''
-
 
 # Terminals
 eq = Literal("=").suppress()
@@ -56,9 +55,9 @@ hasCapitalLine = Literal("has_capital") + eq + yesno
 hasSubjectLine = Literal("has_subject") + eq + yesno
 
 modifierSection = Literal("modifier") + eq + begin + \
-        Literal("key") + eq + quotedName + \
-        Literal("duration") + eq + integer + \
-        Literal("power") + eq + flt + stop
+                  Literal("key") + eq + quotedName + \
+                  Literal("duration") + eq + integer + \
+                  Literal("power") + eq + flt + stop
 
 lightShipLine = Literal("light_ship").suppress() + eq + integer
 transferredOutLine = Literal("transferred_out").suppress() + eq + flt
@@ -70,33 +69,33 @@ transferredToValueSection = Literal("transfered_to_value").suppress() + eq + flo
 privateerMissionLine = Literal("privateer_mission").suppress() + eq + flt
 
 powerSection = Literal("power").suppress() + eq + begin + \
-                (
-                    countryLine +
-                    currentLine +
-                    Optional(prevLine) +
-                    maxPowerLine +
-                    provincePowerLine +
-                    shipPowerLine +
-                    Optional(privateerMissionLine) +
-                    powerFractionLine +
-                    powerFractionPushLine +
-                    moneyLine +
-                    totalLine +
-                    steerPowerLine +
-                    typeLine +
-                    actualAddedValueLine +
-                    hasTraderLine +
-                    hasCapitalLine +
-                    Optional(hasSubjectLine) +
-                    Optional(lightShipLine) +
-                    Optional(transferredOutLine) +
-                    Optional(transferredInLine) +
-                    Optional(transferredToIndexSection) +
-                    Optional(transferredToValueSection) +
-                    Optional(transferredFromIndexSection) +
-                    Optional(transferredFromValueSection) +
-                    Optional(modifierSection)
-                ) + stop
+               (
+                       countryLine +
+                       currentLine +
+                       Optional(prevLine) +
+                       maxPowerLine +
+                       provincePowerLine +
+                       shipPowerLine +
+                       Optional(privateerMissionLine) +
+                       powerFractionLine +
+                       powerFractionPushLine +
+                       moneyLine +
+                       totalLine +
+                       steerPowerLine +
+                       typeLine +
+                       actualAddedValueLine +
+                       hasTraderLine +
+                       hasCapitalLine +
+                       Optional(hasSubjectLine) +
+                       Optional(lightShipLine) +
+                       Optional(transferredOutLine) +
+                       Optional(transferredInLine) +
+                       Optional(transferredToIndexSection) +
+                       Optional(transferredToValueSection) +
+                       Optional(transferredFromIndexSection) +
+                       Optional(transferredFromValueSection) +
+                       Optional(modifierSection)
+               ) + stop
 
 valLine = Literal("val") + eq + flt
 maxPowLine = Literal("max_pow") + eq + flt
@@ -109,38 +108,38 @@ tToSection = Literal("t_to") + eq + begin + OneOrMore(name + eq + flt) + stop
 
 # new (AOW or ED?) format for a country's power in a node
 countryPowerSection = name + eq + begin + \
-                    (
-                       Optional(typeLine) +
-                       Optional(valLine) +
-                       Optional(prevLine) +
-                       Optional(maxPowLine) +
-                       maxDemandLine +
-                       Optional(provincePowerLine) +
-                       Optional(shipPowerLine) +
-                       Optional(privateerMissionLine) +
-                       Optional(powerFractionLine) +
-                       Optional(moneyLine) +
-                       Optional(totalLine) +
-                       Optional(steerPowerLine) +
-                       Optional(addLine) +
-                       Optional(hasTraderLine) +
-                       Optional(hasCapitalLine) +
-                       Optional(lightShipLine) +
-                       Optional(tOutLine) +
-                       Optional(tInLine) +
-                       Optional(tToSection) +
-                       Optional(tFromSection) +
-                       Optional(modifierSection)
-                    ) + stop
+                      (
+                              Optional(typeLine) +
+                              Optional(valLine) +
+                              Optional(prevLine) +
+                              Optional(maxPowLine) +
+                              maxDemandLine +
+                              Optional(provincePowerLine) +
+                              Optional(shipPowerLine) +
+                              Optional(privateerMissionLine) +
+                              Optional(powerFractionLine) +
+                              Optional(moneyLine) +
+                              Optional(totalLine) +
+                              Optional(steerPowerLine) +
+                              Optional(addLine) +
+                              Optional(hasTraderLine) +
+                              Optional(hasCapitalLine) +
+                              Optional(lightShipLine) +
+                              Optional(tOutLine) +
+                              Optional(tInLine) +
+                              Optional(tToSection) +
+                              Optional(tFromSection) +
+                              Optional(modifierSection)
+                      ) + stop
 
 tradegoodSection = Literal("trade_goods_size").suppress() + eq + begin + \
-    OneOrMore(flt) + stop
+                   OneOrMore(flt) + stop
 
-incomingSection = (Literal("incoming").suppress() + eq + begin + \
-    actualAddedValueLine + valueLine + fromLine + stop)
+incomingSection = (Literal("incoming").suppress() + eq + begin +
+                   actualAddedValueLine + valueLine + fromLine + stop)
 
 newIncomingSection = (Literal("incoming").suppress() + eq + begin +
-                        addLine + valueLine + fromLine + stop)
+                      addLine + valueLine + fromLine + stop)
 
 topProvincesSection = Literal("top_provinces").suppress() + eq + begin + OneOrMore(quotedName | name) + stop
 topProvincesValuesSection = Literal("top_provinces_values").suppress() + eq + floatList
@@ -148,32 +147,32 @@ topPowerSection = Literal("top_power").suppress() + eq + begin + OneOrMore(quote
 topPowerValuesSection = Literal("top_power_values").suppress() + eq + floatList
 tradeCompanyRegionLine = Literal("trade_company_region").suppress() + eq + yesno
 
-nodeSection = (Literal("node").suppress() + eq + begin + \
-                definitionsLine +
-                currentLine +
-                localValueLine +
-                outgoingLine +
-                valueAddedOutgoingLine +
-                retentionLine +
-                ZeroOrMore(steerPowerLine) +
-                totalLine +
-                Optional(provincePowerLine) +
-                maxLine +
-                collectorPowerLine +
-                pullPowerLine +
-                retainPowerLine +
-                highestPowerLine +
-                Optional(pirateHuntLine) +
-                ZeroOrMore(powerSection) +
-                ZeroOrMore(countryPowerSection) +
-                ZeroOrMore(incomingSection) +
-                ZeroOrMore(newIncomingSection) +
-                Optional(tradegoodSection) + # Western Europe has no trade goods!
-                Optional(topProvincesSection) +
-                Optional(topProvincesValuesSection) +
-                Optional(topPowerSection) +
-                Optional(topPowerValuesSection) +
-                Optional(tradeCompanyRegionLine) +
-                stop).setResultsName("Nodes", True)
+nodeSection = Group(Literal("node").suppress() + eq + begin +
+                    definitionsLine +
+                    currentLine +
+                    localValueLine +
+                    outgoingLine +
+                    valueAddedOutgoingLine +
+                    retentionLine +
+                    ZeroOrMore(steerPowerLine) +
+                    totalLine +
+                    Optional(provincePowerLine) +
+                    maxLine +
+                    collectorPowerLine +
+                    pullPowerLine +
+                    retainPowerLine +
+                    highestPowerLine +
+                    Optional(pirateHuntLine) +
+                    ZeroOrMore(powerSection) +
+                    ZeroOrMore(countryPowerSection) +
+                    ZeroOrMore(incomingSection) +
+                    ZeroOrMore(newIncomingSection) +
+                    Optional(tradegoodSection) +  # Western Europe has no trade goods!
+                    Optional(topProvincesSection) +
+                    Optional(topProvincesValuesSection) +
+                    Optional(topPowerSection) +
+                    Optional(topPowerValuesSection) +
+                    Optional(tradeCompanyRegionLine) +
+                    stop).setResultsName("Nodes", True)
 
-tradeSection = begin + OneOrMore(nodeSection) + stop
+trade_section = begin + OneOrMore(nodeSection) + stop
