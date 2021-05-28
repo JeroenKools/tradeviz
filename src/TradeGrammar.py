@@ -21,6 +21,7 @@ flt = Word(nums + ".-").setParseAction(lambda s, l, t: float(t[0]))
 integer = Word(nums + "-").setParseAction(lambda s, l, t: int(t[0]))
 intList = begin + OneOrMore(integer) + stop
 floatList = begin + OneOrMore(flt) + stop
+date = Word(nums) + Literal(".") + Word(nums) + Literal(".") + Word(nums)
 
 definitionsLine = Literal("definitions").suppress() + eq + quotedName.setResultsName("quotedName")
 currentLine = Literal("current").suppress() + eq + flt.setResultsName("currentValue")
@@ -29,6 +30,7 @@ outgoingLine = Literal("outgoing").suppress() + eq + flt.setResultsName("outgoin
 valueAddedOutgoingLine = (Literal("value_added_outgoing") + eq + flt).suppress()
 retentionLine = (Literal("retention") + eq + flt).suppress()
 steerPowerLine = (Literal("steer_power") + eq + flt).suppress()
+numCollectorsLine = (Literal("num_collectors") + eq + flt).suppress()
 totalLine = (Literal("total").suppress() + eq + flt).suppress()  # total trade power
 provincePower = Word("p_pow") ^ Word("province_power")
 provincePowerLine = (provincePower + eq + flt).suppress()
@@ -57,7 +59,9 @@ hasSubjectLine = Literal("has_subject") + eq + yesno
 modifierSection = Literal("modifier") + eq + begin + \
                   Literal("key") + eq + quotedName + \
                   Literal("duration") + eq + integer + \
-                  Literal("power") + eq + flt + stop
+                  Literal("power") + eq + flt + \
+                  Optional(Literal("power_modifier") + eq + flt) + \
+                  stop
 
 lightShipLine = Literal("light_ship").suppress() + eq + integer
 transferredOutLine = Literal("transferred_out").suppress() + eq + flt
@@ -67,6 +71,7 @@ transferredFromValueSection = Literal("transfered_from_value").suppress() + eq +
 transferredToIndexSection = Literal("transfered_to_index").suppress() + eq + intList
 transferredToValueSection = Literal("transfered_to_value").suppress() + eq + floatList
 privateerMissionLine = Literal("privateer_mission").suppress() + eq + flt
+privateerMoneyLine = Literal("privateer_money").suppress() + eq + flt
 
 powerSection = Literal("power").suppress() + eq + begin + \
                (
@@ -98,30 +103,37 @@ powerSection = Literal("power").suppress() + eq + begin + \
                ) + stop
 
 valLine = Literal("val") + eq + flt
+potentialLine = Literal("potential") + eq + flt
 maxPowLine = Literal("max_pow") + eq + flt
 maxDemandLine = Literal("max_demand") + eq + flt
 addLine = Literal("add") + eq + flt
+alreadySentLine = Literal("already_sent") + eq + flt
 tInLine = Literal("t_in") + eq + flt
 tOutLine = Literal("t_out") + eq + flt
 tFromSection = Literal("t_from") + eq + begin + OneOrMore(name + eq + flt) + stop
 tToSection = Literal("t_to") + eq + begin + OneOrMore(name + eq + flt) + stop
+tradingPolicyLine = Literal("trading_policy") + eq + quotedName
+tradingPolicyDateLine = Literal("trading_policy_date") + eq + date
 
 # new (AOW or ED?) format for a country's power in a node
 countryPowerSection = name + eq + begin + \
                       (
                               Optional(typeLine) +
                               Optional(valLine) +
+                              Optional(potentialLine) +
                               Optional(prevLine) +
                               Optional(maxPowLine) +
                               maxDemandLine +
                               Optional(provincePowerLine) +
                               Optional(shipPowerLine) +
                               Optional(privateerMissionLine) +
+                              Optional(privateerMoneyLine) +
                               Optional(powerFractionLine) +
                               Optional(moneyLine) +
                               Optional(totalLine) +
                               Optional(steerPowerLine) +
                               Optional(addLine) +
+                              Optional(alreadySentLine) +
                               Optional(hasTraderLine) +
                               Optional(hasCapitalLine) +
                               Optional(lightShipLine) +
@@ -129,7 +141,9 @@ countryPowerSection = name + eq + begin + \
                               Optional(tInLine) +
                               Optional(tToSection) +
                               Optional(tFromSection) +
-                              Optional(modifierSection)
+                              ZeroOrMore(modifierSection) +
+                              Optional(tradingPolicyLine) +
+                              Optional(tradingPolicyDateLine)
                       ) + stop
 
 tradegoodSection = Literal("trade_goods_size").suppress() + eq + begin + \
@@ -146,22 +160,26 @@ topProvincesValuesSection = Literal("top_provinces_values").suppress() + eq + fl
 topPowerSection = Literal("top_power").suppress() + eq + begin + OneOrMore(quotedName | name) + stop
 topPowerValuesSection = Literal("top_power_values").suppress() + eq + floatList
 tradeCompanyRegionLine = Literal("trade_company_region").suppress() + eq + yesno
+recentTreasureShipLine = Literal("most_recent_treasure_ship_passage").suppress() + eq + date
+total_privateer_power = Literal("total_privateer_power") + eq + flt
 
 nodeSection = Group(Literal("node").suppress() + eq + begin +
                     definitionsLine +
-                    currentLine +
-                    localValueLine +
-                    outgoingLine +
-                    valueAddedOutgoingLine +
+                    Optional(currentLine) +
+                    Optional(localValueLine) +
+                    Optional(outgoingLine) +
+                    Optional(valueAddedOutgoingLine) +
                     retentionLine +
                     ZeroOrMore(steerPowerLine) +
+                    Optional(numCollectorsLine) +
                     totalLine +
                     Optional(provincePowerLine) +
-                    maxLine +
-                    collectorPowerLine +
-                    pullPowerLine +
-                    retainPowerLine +
-                    highestPowerLine +
+                    Optional(maxLine) +
+                    Optional(collectorPowerLine) +
+                    Optional(pullPowerLine) +
+                    Optional(retainPowerLine) +
+                    Optional(highestPowerLine) +
+                    Optional(total_privateer_power) +
                     Optional(pirateHuntLine) +
                     ZeroOrMore(powerSection) +
                     ZeroOrMore(countryPowerSection) +
@@ -173,6 +191,7 @@ nodeSection = Group(Literal("node").suppress() + eq + begin +
                     Optional(topPowerSection) +
                     Optional(topPowerValuesSection) +
                     Optional(tradeCompanyRegionLine) +
+                    Optional(recentTreasureShipLine) +
                     stop).setResultsName("Nodes", True)
 
 trade_section = begin + OneOrMore(nodeSection) + stop

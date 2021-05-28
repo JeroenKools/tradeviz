@@ -1,10 +1,10 @@
-'''
+"""
 Created on 9 aug. 2015
 
 @author: Jeroen Kools
-'''
+"""
 
-from TradeGrammar import begin, stop, eq, integer, name, quotedName, yesno, intList, floatList
+from src.TradeGrammar import begin, stop, eq, integer, name, quotedName, yesno, intList, floatList
 from pyparsing import ZeroOrMore, OneOrMore, Optional, Literal, Each, Group
 
 
@@ -20,15 +20,17 @@ outgoing = Literal("outgoing") + eq + begin + \
 member = Group(Literal("members") + eq + intList)
 isEnd = Literal("end") + eq + yesno
 isInland = Literal("inland") + eq + yesno
+ai_will_propagate = Literal("ai_will_propagate_through_trade") + eq + yesno
 
-
-node = Group(name.setResultsName("name") + eq + begin + \
+node = Group(name.setResultsName("name") + eq + begin +
     Each([location,
           Optional(color),
           Optional(isInland),
           ZeroOrMore(outgoing),
           OneOrMore(member),
-          Optional(isEnd)]) + \
+          Optional(isEnd),
+          Optional(ai_will_propagate)
+          ]) +
     stop)
 nodes = OneOrMore(node)
 

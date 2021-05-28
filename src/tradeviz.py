@@ -64,8 +64,8 @@ BLACK = "#000"
 SMALL_FONT = ("Cambria", 12)
 BIG_FONT = ("Cambria", 18, "bold")
 
-VERSION = "1.5.0"
-COMPATIBILITY_VERSION = version.LooseVersion("1.21.1")  # EU4 version
+VERSION = "1.31.1.0"
+COMPATIBILITY_VERSION = version.LooseVersion("1.31.1")  # EU4 version
 APP_NAME = "EU4 Trade Visualizer"
 
 
@@ -397,8 +397,8 @@ class TradeViz:
         self.done = False
         self.go_time = time.time()
         self.clear_map()
-        #wait_icon_thread = threading.Thread(target=self.do_wait_icon)
-        #wait_icon_thread.start()
+        # wait_icon_thread = threading.Thread(target=self.do_wait_icon)
+        # wait_icon_thread.start()
 
         if self.config["savefile"]:
 
@@ -418,15 +418,15 @@ class TradeViz:
                 self.get_trade_data(trade_section_txt)
                 self.get_node_data()
 
-            except Exception as e:
+            except (pyparsing.ParseException, IndexError, Exception) as e:
                 msg = "Tradeviz could not parse this file. You might be trying to open a corrupted save," + \
                       "or a save created with an unsupported mod or game version."
                 if type(e) == pyparsing.ParseException:
-                    e = pyparsing.ParseException(e)
                     print("----------------------------")
                     print(e.line)
                     print(" " * (e.column - 1) + "^")
                     print(e)
+                    print("(Actual line nr: %d)" % (e.lineno + self.preTradeSectionLines))
 
                     msg += "Error: " + str(e)
                 elif type(e) == IndexError:
@@ -524,7 +524,7 @@ class TradeViz:
             return txt
 
     def check_for_version(self, txt):
-        version_tuple = re.findall("first=(/d+)/s+second=(/d+)/s+third=(/d+)", txt[:500])
+        version_tuple = re.findall(r"first=(\d+)\s+second=(\d+)\s+third=(\d+)", txt[:500])
         if version_tuple == list():
             self.logger.warning("Could not find version info!")
             self.saveVersion = version.LooseVersion("???")
@@ -548,11 +548,14 @@ class TradeViz:
         if not self.zeroArrows and self.gui.showZeroVar.get():
             self.draw_map()
         else:
-            for itemId in self.zeroArrows:
-                if self.gui.showZeroVar.get():
-                    self.gui.canvas.itemconfig(itemId, state="normal")
-                else:
-                    self.gui.canvas.itemconfig(itemId, state="hidden")
+            try:
+                for itemId in self.zeroArrows:
+                    if self.gui.showZeroVar.get():
+                        self.gui.canvas.itemconfig(itemId, state="normal")
+                    else:
+                        self.gui.canvas.itemconfig(itemId, state="hidden")
+            except tk.TclError:
+                self.logger.error("Error modifying zero arrow with itemId %s" % itemId)
 
         self.save_config()
 
@@ -580,7 +583,6 @@ class TradeViz:
 
         self.logger.info("Parsing %i chars" % len(trade_section_txt))
         t0 = time.time()
-
         self.logger.debug("Parsing trade section...")
         result = trade_section.parseString(trade_section_txt)
         result_dict = result.asDict()
@@ -845,30 +847,30 @@ class TradeViz:
                 z2 = self.gui.canvas.create_line((center_of_line[0], center_of_line[1], x2 * ratio, y2 * ratio),
                                                  width=line_width, fill=line_color)
 
-                z3 = self.map_draw.line((x * ratio, y * ratio, center_of_line[0], center_of_line[1]),
-                                        width=line_width, fill=line_color)
-                z4 = self.map_draw.polygon(
+                self.map_draw.line((x * ratio, y * ratio, center_of_line[0], center_of_line[1]),
+                                   width=line_width, fill=line_color)
+                self.map_draw.polygon(
                     (x * ratio, y * ratio,
                      (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
                      (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
                      ),
                     outline=line_color, fill=line_color)
 
-                z5 = self.map_draw.line((center_of_line[0], center_of_line[1], x2 * ratio, y2 * ratio),
-                                        width=line_width, fill=line_color)
+                self.map_draw.line((center_of_line[0], center_of_line[1], x2 * ratio, y2 * ratio),
+                                   width=line_width, fill=line_color)
 
                 if value == 0:
-                    self.zeroArrows += [z1, z2, z3, z4, z5]
+                    self.zeroArrows += [z1, z2]
 
             else:
                 z1 = self.gui.canvas.create_line((x * ratio, y * ratio, x2 * ratio, y2 * ratio),
                                                  width=line_width, arrow=tk.FIRST, arrowshape=arrow_shape,
                                                  fill=line_color)
 
-                z2 = self.map_draw.line((x * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                self.map_draw.line((x * ratio, y * ratio, x2 * ratio, y2 * ratio),
                                         width=line_width, fill=line_color)
 
-                z3 = self.map_draw.polygon(
+                self.map_draw.polygon(
                     (x * ratio, y * ratio,
                      (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
                      (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
@@ -876,7 +878,7 @@ class TradeViz:
                     outline=line_color, fill=line_color)
 
                 if value == 0:
-                    self.zeroArrows += [z1, z2, z3]
+                    self.zeroArrows += [z1]
 
             self.gui.arrow_labels.append([center_of_line, value])
 
@@ -888,11 +890,11 @@ class TradeViz:
                 z1 = self.gui.canvas.create_line(((self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
                                                  width=1, fill=line_color, arrow=tk.FIRST, arrowshape=arrow_shape)
 
-                z2 = self.map_draw.line((x * ratio, y * ratio, (-self.mapWidth + x2) * ratio, y2 * ratio),
-                                        width=1, fill=line_color)
-                z3 = self.map_draw.line(((self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
-                                        width=1, fill=line_color)
-                z4 = self.map_draw.polygon(
+                self.map_draw.line((x * ratio, y * ratio, (-self.mapWidth + x2) * ratio, y2 * ratio),
+                                   width=1, fill=line_color)
+                self.map_draw.line(((self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                                   width=1, fill=line_color)
+                self.map_draw.polygon(
                     (x * ratio, y * ratio,
                      (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
                      (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
@@ -906,7 +908,7 @@ class TradeViz:
 
                 center_of_line = (x / 2 * ratio, (yf + y) / 2 * ratio)
                 if value == 0:
-                    self.zeroArrows += [z0, z1, z2, z3, z4]
+                    self.zeroArrows += [z0, z1]
 
             else:  # Americas to Asia
                 z0 = self.gui.canvas.create_line((x * ratio, y * ratio, (self.mapWidth + x2) * ratio, y2 * ratio),
@@ -914,11 +916,11 @@ class TradeViz:
                 z1 = self.gui.canvas.create_line(((-self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
                                                  width=1, fill=line_color, arrow=tk.FIRST, arrowshape=arrow_shape)
 
-                z2 = self.map_draw.line((x * ratio, y * ratio, (self.mapWidth + x2) * ratio, y2 * ratio),
-                                        width=1, fill=line_color)
-                z3 = self.map_draw.line(((-self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
-                                        width=1, fill=line_color)
-                z4 = self.map_draw.polygon(
+                self.map_draw.line((x * ratio, y * ratio, (self.mapWidth + x2) * ratio, y2 * ratio),
+                                   width=1, fill=line_color)
+                self.map_draw.line(((-self.mapWidth + x) * ratio, y * ratio, x2 * ratio, y2 * ratio),
+                                   width=1, fill=line_color)
+                self.map_draw.polygon(
                     (x * ratio, y * ratio,
                      (x - w * dx + w * dy) * ratio, (y - w * dx - w * dy) * ratio,
                      (x - w * dx - w * dy) * ratio, (y + w * dx - w * dy) * ratio
@@ -933,7 +935,7 @@ class TradeViz:
             self.gui.arrow_labels.append([center_of_line, value])
 
             if value == 0:
-                self.zeroArrows += [z0, z1, z2, z3, z4]
+                self.zeroArrows += [z0, z1]
 
     def clear_map(self, update=False):
         self.gui.canvas.create_image((0, 0), image=self.provinceImage, anchor=tk.NW)
@@ -972,7 +974,6 @@ class TradeViz:
                             continue
                         self.draw_arrow(from_node_nr, n + 1, value, self.get_node_radius(data))
                         n_arrows += 1
-                        self.logger.debug("Drew an arrow from %s to %s", from_node_nr, n+1)
             except KeyError:
                 self.show_error("Encountered unknown trade node %s!" % node[0],
                                 "An invalid trade node was encountered. Save doesn't match" +
@@ -985,13 +986,16 @@ class TradeViz:
             if value > 0 or self.gui.showZeroVar.get():
                 value_str = "%i" % ceil(value) if (value >= 2 or value <= 0) else ("%.1f" % value)
                 z5 = self.gui.canvas.create_text(centerOfLine, text=value_str, fill=WHITE)
-                z6 = self.map_draw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), value_str, fill=WHITE)
+                self.map_draw.text((centerOfLine[0] - 4, centerOfLine[1] - 4), value_str, fill=WHITE)
 
                 if value == 0:
-                    self.zeroArrows += [z5, z6]
+                    self.zeroArrows += [z5]
 
         # draw trade nodes and their current value
         n_nodes = 0
+        try:
+            self.logger.debug("trade nodes: %d, node data: %d" % (len(self.tradenodes), len(self.node_data)))
+        except Exception: pass
         for n, node in enumerate(self.tradenodes):
             x, y = self.get_node_location(n + 1)
 
@@ -1002,10 +1006,10 @@ class TradeViz:
             s = self.get_node_radius(data)
             trade_node_color = WHITE
 
-            if self.config["nodesShow"] == "Total value":
+            if self.config["nodesShow"] == "Total value" and "currentValue" in data:
                 v = data["currentValue"]
                 trade_node_color = RED
-            elif self.config["nodesShow"] == "Local value":
+            elif self.config["nodesShow"] == "Local value" and "localValue" in data:
                 v = data["localValue"]
                 trade_node_color = PURPLE
             else:
@@ -1084,7 +1088,7 @@ def sign(v):
 
 
 def safe_division(x, y):
-    return x/y if y else 0
+    return x / y if y else 0
 
 
 def remove_comments(txt):
