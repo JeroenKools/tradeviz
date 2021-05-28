@@ -995,7 +995,8 @@ class TradeViz:
         n_nodes = 0
         try:
             self.logger.debug("trade nodes: %d, node data: %d" % (len(self.tradenodes), len(self.node_data)))
-        except Exception: pass
+        except AttributeError:
+            pass
         for n, node in enumerate(self.tradenodes):
             x, y = self.get_node_location(n + 1)
 
@@ -1004,7 +1005,7 @@ class TradeViz:
                 continue
             data = self.node_data[node[0]]
             s = self.get_node_radius(data)
-            trade_node_color = WHITE
+            trade_node_color = BLACK
 
             if self.config["nodesShow"] == "Total value" and "currentValue" in data:
                 v = data["currentValue"]
