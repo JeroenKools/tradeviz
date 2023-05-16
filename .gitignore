@@ -10,3 +10,4 @@
 /src/*.log
 /dist/bin/*.log
 dist/tradeviz.cfg
+/.idea
