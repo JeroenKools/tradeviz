@@ -390,21 +390,20 @@ class TradeViz:
 
             except Exception as e:
                 msg = "Tradeviz could not parse this file. You might be trying to open a corrupted save," + \
-                      "or a save created with an unsupported mod or game version."
+                      "or a save created with an unsupported mod or game version. "
                 if type(e) == pyparsing.ParseException:
-                    print
-                    "----------------------------"
-                    print
-                    e.line
-                    print
-                    " " * (e.column - 1) + "^"
-                    print
-                    e
-
                     msg += "Error: " + str(e)
+                    try:
+                        lineNum = re.search(R"line:(\d+)", str(e))
+                        lineNum = lineNum.groups()[0]
+                        correctLineNum = str(int(lineNum) + self.preTradeSectionLines)
+                        msg = re.sub(f"line:{lineNum}", f"line:{correctLineNum}", msg)
+                    except AttributeError:
+                        pass
+                    print(f"----------------------------\n" +
+                          f"{e.line}\n{' ' * (e.column - 1)}^\n{msg}")
                 elif type(e) == IndexError:
-                    print
-                    e.message
+                    print(e.message)
                     print("+" + str(self.preTradeSectionLines))
 
                 self.showError(e, "Can't read file! " + msg)
