@@ -1,8 +1,10 @@
-'''
+"""
 Created on 9 aug. 2015
 
+Pyparsing grammar describing the structure of the EU4 file 00_tradenodes.txt
+
 @author: Jeroen Kools
-'''
+"""
 
 from TradeGrammar import begin, stop, eq, integer, name, quotedName, yesno, intList, floatList
 from pyparsing import ZeroOrMore, OneOrMore, Optional, Literal, Each, Group
