@@ -5,10 +5,11 @@ Created on 21 aug. 2013
 @author: Jeroen Kools
 """
 
-# TODO: Show countries option: ALL, specific tag
-# TODO: Improve map readability at lower resolutions? (e.g. 1280x720)
-# TODO: Full, tested support for Mac and Linux
+# TODO: implement zoom function
 # TODO: Nodes show options: Player abs trade power, player rel trade power, total trade power
+# TODO: Improve handling of arrows intersecting nodes
+# TODO: Show countries option: all, players, none
+# TODO: Full, tested support for Mac and Linux
 
 # DEPENDENDIES:
 # PyParsing: http://pyparsing.wikispaces.com or use 'pip install pyparsing'
@@ -48,8 +49,9 @@ provinceBMP = "../res/worldmap.gif"
 LIGHT_SLATE = "#36434b"
 DARK_SLATE = "#29343a"
 BTN_BG = "#364555"
-BANNER_BG = "#9E9186"  # TODO: better color?
+BANNER_BG = "#9E9186"
 WHITE = "#fff"
+BLACK = "#000"
 
 # Fonts
 SMALL_FONT = ("Cambria", 12)
@@ -157,7 +159,7 @@ class TradeViz:
         self.paneHeight = 195
         self.w, self.h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         self.root.title("%s v%s" % (APP_NAME, VERSION))
-        self.root.bind("<Escape>", lambda x: self.exit("Escape"))
+        self.root.bind("<Escape>", lambda x: self.exit("Escape key pressed"))
         self.root.wm_protocol("WM_DELETE_WINDOW", lambda: self.exit("Close Window"))
         self.zero_arrows = []
         self.config = {}
@@ -352,35 +354,52 @@ class TradeViz:
                                         bg=BTN_BG, fg=WHITE, font=SMALL_FONT, relief="ridge")
         self.ui.exit_button.grid(row=7, column=3, sticky="SWE", padx=7, pady=15)
 
-    @staticmethod
-    def setup_tk_styles():
+    def setup_tk_styles(self):
         style = ttk.Style()
-        style.element_create("plain.field", "from", "default")
-        style.layout("My.TCombobox",
-                     [('Combobox.plain.field', {'children': [(
-                         'Combobox.background', {'children': [(
-                             'Combobox.padding', {'children': [(
-                                 'Combobox.textarea', {'sticky': 'nswe'}
-                             )],
-                                 'sticky': 'nswe'})],
-                             'sticky': 'nswe'}),
-                         ('Combobox.downarrow', {'sticky': 'nse'})], 'border': '0', 'sticky': 'nswe'})])
-
-        style.map("TCombobox", selectbackground=[('!focus', WHITE), ('focus', WHITE)],
-                  selectforeground=[('!focus', DARK_SLATE), ('focus', DARK_SLATE)])
-        style.configure("My.TCombobox",
-                        background=WHITE,
-                        foreground=DARK_SLATE
-                        )
-
-        list_box_style = ttk.Style()
-        list_box_style.configure("TListbox", background="#f00", foreground="#00f")
-        list_box_style.map("TListbox", selectbackground=[('!focus', WHITE), ('focus', WHITE)],
-                           selectforeground=[('!focus', DARK_SLATE), ('focus', DARK_SLATE)])
-        list_box_style.configure("TListbox",
-                                 background=LIGHT_SLATE,
-                                 foreground=WHITE
-                                 )
+        style.theme_create(
+            'tradeviz_style',
+            parent='alt',
+            settings={'TCombobox': {
+                'configure':
+                    {'selectforeground': DARK_SLATE,
+                     'selectbackground': WHITE,
+                     'fieldforeground': DARK_SLATE,
+                     'fieldbackground': WHITE,
+                     'foreground': DARK_SLATE,
+                     'background': WHITE,
+                     }
+            },
+                'TListbox': {
+                    "configure":
+                        {'selectforeground': WHITE,
+                         'selectbackground': LIGHT_SLATE,
+                         'fieldforeground': WHITE,
+                         'fieldbackground': LIGHT_SLATE,
+                         'foreground': WHITE,
+                         'background': DARK_SLATE,
+                         }
+                },
+                'TCheckbutton': {
+                    "configure":
+                        {
+                            'indicatorcolor': LIGHT_SLATE,
+                            'foreground': WHITE,
+                            'background': DARK_SLATE,
+                        }
+                },
+                'TEntry': {
+                    "configure":
+                        {
+                            "fieldforeground": WHITE,
+                            "fieldbackground": LIGHT_SLATE,
+                            "foreground": WHITE,
+                        }
+                }
+            }
+        )
+        self.root.option_add("*TCombobox*Listbox*Background", WHITE)
+        self.root.option_add("*TCombobox*Listbox*Foreground", DARK_SLATE)
+        style.theme_use('tradeviz_style')
 
     def browse_save(self, _event=None):
         """Let the user browseSave for an EU4 save file to be used by the program"""
@@ -534,7 +553,7 @@ class TradeViz:
         self.root.update()
         logging.debug("Reading save file %s" % os.path.basename(self.config["savefile"]))
 
-        with open(self.config["savefile"]) as f:
+        with open(self.config["savefile"], encoding="latin-1", mode="r") as f:
             try:
                 txt = f.read()
             except UnicodeDecodeError:
@@ -565,7 +584,7 @@ class TradeViz:
 
     @staticmethod
     def check_for_ironman(txt):
-        if txt.startswith("EU4binM"):
+        if txt.startswith("EU4bin"):
             raise ReadError("appears to be an Ironman save")
 
     def check_for_compression(self, txt):
@@ -574,9 +593,9 @@ class TradeViz:
         if txt[:2] == "PK":
             logging.info("Save file is compressed, unzipping...")
             zipped_save = zipfile.ZipFile(self.config["savefile"])
-            filename = [x for x in zipped_save.namelist() if x.endswith(".eu4")][0]
+            filename = [x for x in zipped_save.namelist() if x.endswith(".eu4") or x == "gamestate"][0]
             unzipped_save = zipped_save.open(filename)
-            txt = unzipped_save.read()
+            txt = unzipped_save.read().decode("latin-1")
             return txt
         else:
             return txt
@@ -725,7 +744,7 @@ class TradeViz:
                     positions_file = os.path.join(self.config["installDir"], positions)
                     logging.debug("Using default positions file")
 
-                with open(positions_file, "r") as f:
+                with open(positions_file, encoding="latin-1", mode="r") as f:
                     txt = f.read()
         except IOError as e:
             logging.critical("Could not find locations file: %s" % e)
@@ -1011,7 +1030,7 @@ class TradeViz:
 
             data = self.node_data[node[0]]
             s = self.get_node_radius(data)
-            trade_node_color = "#000"
+            trade_node_color = BLACK
             v = 0
 
             if self.config["nodesShow"] == "Total value":
@@ -1078,7 +1097,6 @@ class TradeViz:
                 logging.error("Problem saving map image: %s" % e)
 
     def click_map(self, *args):
-        # TODO: implement zoom function
         x = args[0].x
         y = args[0].y
         self.zoomed = not self.zoomed
