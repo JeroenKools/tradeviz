@@ -1,6 +1,8 @@
 import sys
 import os
 import logging
+import tkinter as tk
+import tkinter.messagebox
 
 WinRegKey =\
     "S-1-5-21-1472195844-1040877506-3863951423-1002\\System\\GameConfigStore\\Children\\" +\
@@ -9,7 +11,7 @@ MacDefaultPath = os.path.expanduser("~/Library/Application Support/Steam/Steamap
 LinuxDefaultPath = os.path.expanduser("~/.local/share/Steam/SteamApps/common/Europa Universalis IV")
 
 
-def getInstallDir():
+def search_install_dir():
     if sys.platform == "win32":
         import winreg
         try:
@@ -35,8 +37,22 @@ def getInstallDir():
             return LinuxDefaultPath
 
 
-def removeComments(txt):
+def remove_comments(txt):
     lines = txt.split("\n")
     for i in range(len(lines)):
         lines[i] = lines[i].split("#")[0]
     return "\n".join(lines)
+
+
+def sign(v):
+    if v < 0:
+        return -1
+    else:
+        return 1
+
+
+def show_error(logMessage, userMessage):
+    if not userMessage:
+        userMessage = logMessage
+    logging.error(f"{userMessage}\n{logMessage}")
+    tk.messagebox.showerror("Error", userMessage)

@@ -41,12 +41,12 @@ node = Group(name.setResultsName("name") + eq + begin +
 nodes = OneOrMore(node)
 
 if __name__ == "__main__":
-    installDir = util.getInstallDir()
+    installDir = util.search_install_dir()
     tradeNodesTextPath = os.path.join(installDir, R"common\tradenodes\00_tradenodes.txt")
     print("Looking for trade nodes definitions file at", repr(tradeNodesTextPath))
     with open(tradeNodesTextPath) as f:
         txt = f.read()
-        txt = util.removeComments(txt)
+        txt = util.remove_comments(txt)
         results = nodes.parseString(txt)
         nLocations = txt.count("location")
         nFound = len(results)

@@ -59,7 +59,7 @@ if __name__ == '__main__':
     for fn in os.listdir(testFileDir):
         with open(os.path.join(testFileDir, fn), "rb") as f:
             try:
-                txt = f.read()
-                print(f"{fn: <40} {deironman(txt[:150])}")
+                contents = f.read()
+                print(f"{fn: <40} {deironman(contents[:150])}")
             except UnicodeDecodeError:
                 print(fn, "UnicodeDecodeError")
