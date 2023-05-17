@@ -51,7 +51,7 @@ if __name__ == "__main__":
         nLocations = txt.count("location")
         nFound = len(results)
 
-    print(f"Found {nFound} out of {nLocations} tradenodes")
+    print(f"Found {nFound} out of {nLocations} trade nodes")
 
     for r in results:
         print(r["name"], r["location"])

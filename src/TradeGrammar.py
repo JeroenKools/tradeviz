@@ -162,35 +162,35 @@ tradeCompanyRegionLine = Literal("trade_company_region").suppress() + eq + yesno
 mostRecentTreasureShipPassageLine = Literal("most_recent_treasure_ship_passage").suppress() + eq + date
 
 nodeSection = Dict(Group(Literal("node").suppress() + eq + begin +
-               definitionsLine +
-               Optional(currentLine) +
-               Optional(localValueLine) +
-               Optional(outgoingLine) +
-               Optional(valueAddedOutgoingLine) +
-               retentionLine +
-               ZeroOrMore(steerPowerLine) +
-               Optional(numCollectorsLine) +
-               Optional(numCollectorsIncludingPiratesLine) +
-               Optional(totalLine) +
-               Optional(provincePowerLine) +
-               Optional(maxLine) +
-               Optional(collectorPowerLine) +
-               Optional(collectorPowerIncludingPiratesLine) +
-               Optional(pullPowerLine) +
-               Optional(retainPowerLine) +
-               Optional(highestPowerLine) +
-               Optional(pirateHuntLine) +
-               ZeroOrMore(powerSection) +
-               ZeroOrMore(countryPowerSection) +
-               ZeroOrMore(incomingSection) +
-               ZeroOrMore(newIncomingSection) +
-               Optional(tradegoodSection) +  # Western Europe has no trade goods!
-               Optional(topProvincesSection) +
-               Optional(topProvincesValuesSection) +
-               Optional(topPowerSection) +
-               Optional(topPowerValuesSection) +
-               Optional(tradeCompanyRegionLine) +
-               Optional(mostRecentTreasureShipPassageLine) +
-               stop)).setResultsName("Nodes", True)
+                         definitionsLine +
+                         Optional(currentLine) +
+                         Optional(localValueLine) +
+                         Optional(outgoingLine) +
+                         Optional(valueAddedOutgoingLine) +
+                         retentionLine +
+                         ZeroOrMore(steerPowerLine) +
+                         Optional(numCollectorsLine) +
+                         Optional(numCollectorsIncludingPiratesLine) +
+                         Optional(totalLine) +
+                         Optional(provincePowerLine) +
+                         Optional(maxLine) +
+                         Optional(collectorPowerLine) +
+                         Optional(collectorPowerIncludingPiratesLine) +
+                         Optional(pullPowerLine) +
+                         Optional(retainPowerLine) +
+                         Optional(highestPowerLine) +
+                         Optional(pirateHuntLine) +
+                         ZeroOrMore(powerSection) +
+                         ZeroOrMore(countryPowerSection) +
+                         ZeroOrMore(incomingSection) +
+                         ZeroOrMore(newIncomingSection) +
+                         Optional(tradegoodSection) +  # Western Europe has no trade goods!
+                         Optional(topProvincesSection) +
+                         Optional(topProvincesValuesSection) +
+                         Optional(topPowerSection) +
+                         Optional(topPowerValuesSection) +
+                         Optional(tradeCompanyRegionLine) +
+                         Optional(mostRecentTreasureShipPassageLine) +
+                         stop)).setResultsName("Nodes", True)
 
 tradeSection = begin + OneOrMore(nodeSection) + stop

@@ -6,7 +6,7 @@ Created on May 10, 2017
 
 import os
 
-testFileDir = os.path.expanduser("D:\Documents\Paradox Interactive\Europa Universalis IV\save games")
+testFileDir = os.path.expanduser(R"D:\Documents\Paradox Interactive\Europa Universalis IV\save games")
 
 substitutions = {
     b"\x00\x00": b"",

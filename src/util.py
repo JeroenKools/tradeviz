@@ -2,7 +2,6 @@ import sys
 import os
 import logging
 
-#WinRegKey = "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 236850"  # Win64 only...
 WinRegKey =\
     "S-1-5-21-1472195844-1040877506-3863951423-1002\\System\\GameConfigStore\\Children\\" +\
     "bcc6609b-312a-4db7-b935-9a8da514ba49"
@@ -23,8 +22,8 @@ def getInstallDir():
                     return os.path.dirname(val)
                 i += 1
         except WindowsError as e:
-            raise e
             logging.error("Error while trying to find install dir in Windows registry: %s" % e)
+            raise e
 
     elif sys.platform == "darwin":  # OS X
 
