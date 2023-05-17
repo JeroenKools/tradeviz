@@ -43,13 +43,14 @@ import TradeGrammar
 import util
 
 # globals
-provinceBMP = "../res/worldmap.gif"
+province_image = "../res/worldmap.gif"
 
 # Colors
-LIGHT_SLATE = "#36434b"
+VERY_LIGHT_SLATE = "#b2bfc7"
+MID_SLATE = "#36434b"
 DARK_SLATE = "#29343a"
 BTN_BG = "#364555"
-BANNER_BG = "#9E9186"
+BANNER_BG = "#675851"
 WHITE = "#fff"
 BLACK = "#000"
 
@@ -176,13 +177,13 @@ class TradeViz:
             logging.error("Error setting application icon (expected on Unix): %s" % e)
 
         try:
-            self.ui.map_img = Image.open(provinceBMP).convert("RGB")
+            self.ui.map_img = Image.open(province_image).convert("RGB")
             self.map_width = self.ui.map_img.size[0]
             self.map_height = self.ui.map_img.size[1]
             self.ui.map_img.thumbnail((self.w - 10, self.h), Image.BICUBIC)
             self.ui.draw_img = self.ui.map_img.convert("RGB")
             self.map_thumb_size = self.ui.map_img.size
-            self.ratio = self.map_thumb_size[0] / float(self.map_width)
+            self.map_render_size_ratio = self.map_thumb_size[0] / float(self.map_width)
             self.province_image = ImageTk.PhotoImage(self.ui.map_img)
         except Exception as e:
             logging.critical("Error preparing the world map!\n%s" % e)
@@ -285,7 +286,7 @@ class TradeViz:
 
         tk.Label(self.root, text="Save file:", bg=DARK_SLATE, fg=WHITE,
                  font=SMALL_FONT, anchor="w").grid(row=2, column=0, padx=6, pady=2, sticky="WE")
-        self.ui.save_entry = tk.Entry(self.root, bd=0, border=0, font=SMALL_FONT, bg=LIGHT_SLATE, fg="white")
+        self.ui.save_entry = tk.Entry(self.root, bd=0, border=0, font=SMALL_FONT, bg=MID_SLATE, fg="white")
         self.ui.save_entry.config(highlightbackground="red", border=3, relief="flat")
         self.ui.save_entry.grid(row=2, column=1, columnspan=2, sticky="WE", padx=6, pady=4, ipady=0)
 
@@ -294,7 +295,7 @@ class TradeViz:
         self.ui.mod_path_var = tk.StringVar()
         self.ui.mod_path_combo_box = ttk.Combobox(self.root, textvariable=self.ui.mod_path_var, values=[""],
                                                   state="readonly",
-                                                  font=SMALL_FONT, style="My.TCombobox")
+                                                  font=SMALL_FONT)
         self.ui.mod_path_combo_box.grid(row=3, column=1, columnspan=2, sticky="WE", padx=6, pady=2)
         self.ui.mod_path_var.trace("w", self.mod_path_changed)
 
@@ -305,9 +306,7 @@ class TradeViz:
         self.ui.nodes_show_var.set("Total value")
         self.ui.nodes_show = ttk.Combobox(self.root, textvariable=self.ui.nodes_show_var,
                                           values=["Local value", "Total value"],
-                                          state="readonly", font=SMALL_FONT, style="My.TCombobox")
-        self.ui.nodes_show["background"] = WHITE
-        self.ui.nodes_show["foreground"] = DARK_SLATE
+                                          state="readonly", font=SMALL_FONT)
         self.ui.nodes_show.grid(row=4, column=1, columnspan=2, sticky="W", padx=6, pady=2)
         self.ui.nodes_show_var.trace("w", self.nodes_show_changed)
 
@@ -318,7 +317,7 @@ class TradeViz:
         self.ui.arrow_scale_var.set("Square root")
         self.ui.arrow_scale = ttk.Combobox(self.root, textvariable=self.ui.arrow_scale_var,
                                            values=["Linear", "Square root", "Logarithmic"],
-                                           state="readonly", font=SMALL_FONT, style="My.TCombobox")
+                                           state="readonly", font=SMALL_FONT)
         self.ui.arrow_scale["background"] = WHITE
         self.ui.arrow_scale["foreground"] = DARK_SLATE
 
@@ -327,7 +326,7 @@ class TradeViz:
 
         self.ui.show_zero_var = tk.IntVar(value=1)
         self.ui.show_zeroes = tk.Checkbutton(self.root, text="Show unused trade routes",
-                                             bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT, selectcolor=LIGHT_SLATE,
+                                             bg=DARK_SLATE, fg=WHITE, font=SMALL_FONT, selectcolor=MID_SLATE,
                                              activebackground=DARK_SLATE, activeforeground=WHITE,
                                              variable=self.ui.show_zero_var, command=self.toggle_show_zeroes)
         self.ui.show_zeroes.grid(row=6, column=0, columnspan=2, sticky="W", padx=6, pady=2)
@@ -355,34 +354,34 @@ class TradeViz:
         self.ui.exit_button.grid(row=7, column=3, sticky="SWE", padx=7, pady=15)
 
     def setup_tk_styles(self):
-        style = ttk.Style()
-        style.theme_create(
+        self.ui.style = ttk.Style()
+        self.ui.style.theme_create(
             'tradeviz_style',
             parent='alt',
             settings={'TCombobox': {
                 'configure':
                     {'selectforeground': DARK_SLATE,
-                     'selectbackground': WHITE,
+                     'selectbackground': VERY_LIGHT_SLATE,
                      'fieldforeground': DARK_SLATE,
-                     'fieldbackground': WHITE,
+                     'fieldbackground': VERY_LIGHT_SLATE,
                      'foreground': DARK_SLATE,
-                     'background': WHITE,
+                     'background': VERY_LIGHT_SLATE,
                      }
             },
                 'TListbox': {
                     "configure":
-                        {'selectforeground': WHITE,
-                         'selectbackground': LIGHT_SLATE,
-                         'fieldforeground': WHITE,
-                         'fieldbackground': LIGHT_SLATE,
-                         'foreground': WHITE,
+                        {'selectforeground': VERY_LIGHT_SLATE,
+                         'selectbackground': MID_SLATE,
+                         'fieldforeground': VERY_LIGHT_SLATE,
+                         'fieldbackground': MID_SLATE,
+                         'foreground': VERY_LIGHT_SLATE,
                          'background': DARK_SLATE,
                          }
                 },
                 'TCheckbutton': {
                     "configure":
                         {
-                            'indicatorcolor': LIGHT_SLATE,
+                            'indicatorcolor': MID_SLATE,
                             'foreground': WHITE,
                             'background': DARK_SLATE,
                         }
@@ -391,15 +390,16 @@ class TradeViz:
                     "configure":
                         {
                             "fieldforeground": WHITE,
-                            "fieldbackground": LIGHT_SLATE,
+                            "fieldbackground": MID_SLATE,
                             "foreground": WHITE,
                         }
                 }
             }
         )
-        self.root.option_add("*TCombobox*Listbox*Background", WHITE)
+        self.root.option_add("*TCombobox*Listbox*Background", VERY_LIGHT_SLATE)
         self.root.option_add("*TCombobox*Listbox*Foreground", DARK_SLATE)
-        style.theme_use('tradeviz_style')
+        self.root.option_add("*TCombobox*Listbox*Font", SMALL_FONT)
+        self.ui.style.theme_use('tradeviz_style')
 
     def browse_save(self, _event=None):
         """Let the user browseSave for an EU4 save file to be used by the program"""
@@ -804,7 +804,7 @@ class TradeViz:
             nx, ny = self.get_node_location(n + 1)
             data = self.node_data[node3[0]]
 
-            r = self.get_node_radius(data) / self.ratio
+            r = self.get_node_radius(data) / self.map_render_size_ratio
 
             # assume circle center is at 0,0
             x2, y2 = self.get_node_location(node1)
@@ -817,11 +817,11 @@ class TradeViz:
             if (x1, y1) == (0, 0) or (x2, y2) == (0, 0):
                 continue
 
-            D = x1 * y2 - x2 * y1
+            d_area = x1 * y2 - x2 * y1
             dx = x2 - x1
             dy = y2 - y1
             dr = sqrt(dx ** 2 + dy ** 2)
-            det = r ** 2 * dr ** 2 - D ** 2
+            det = r ** 2 * dr ** 2 - d_area ** 2
 
             if det > 0:
                 # Infinite line intersects, check whether the center node is inside the rectangle
@@ -860,7 +860,7 @@ class TradeViz:
         dx /= radius_ratio
         dy /= radius_ratio
 
-        ratio = self.ratio
+        ratio = self.map_render_size_ratio
         line_width = self.get_line_width(value)
         arrow_shape = (max(8.0, line_width * 2), max(10.0, line_width * 2.5), max(5.0, line_width))
         w = max(5 / ratio, 1.5 * line_width / ratio)
@@ -983,7 +983,7 @@ class TradeViz:
 
         self.clear_map(clear)
         self.ui.done = True
-        ratio = self.ratio
+        ratio = self.map_render_size_ratio
         self.zero_arrows = []
 
         # draw incoming trade arrows
