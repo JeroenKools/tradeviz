@@ -6,7 +6,7 @@ Pyparsing grammar describing the trade section of EU4 save files
 @author: Jeroen Kools
 """
 
-from pyparsing import ZeroOrMore, OneOrMore, Optional, Literal, Word, alphas, nums
+from pyparsing import Dict, Group, ZeroOrMore, OneOrMore, Optional, Literal, Word, alphas, nums
 
 # Terminals
 eq = Literal("=").suppress()
@@ -123,7 +123,7 @@ countryPowerSection = name + eq + begin + \
                               Optional(potentialLine) +
                               Optional(prevLine) +
                               Optional(maxPowLine) +
-                              maxDemandLine +
+                              Optional(maxDemandLine) +  # Empty nodes may have O01-O09 tags without this (observers)
                               Optional(provincePowerLine) +
                               Optional(shipPowerLine) +
                               Optional(privateerMissionLine) +
@@ -161,7 +161,7 @@ topPowerValuesSection = Literal("top_power_values").suppress() + eq + floatList
 tradeCompanyRegionLine = Literal("trade_company_region").suppress() + eq + yesno
 mostRecentTreasureShipPassageLine = Literal("most_recent_treasure_ship_passage").suppress() + eq + date
 
-nodeSection = (Literal("node").suppress() + eq + begin +
+nodeSection = Dict(Group(Literal("node").suppress() + eq + begin +
                definitionsLine +
                Optional(currentLine) +
                Optional(localValueLine) +
@@ -191,6 +191,6 @@ nodeSection = (Literal("node").suppress() + eq + begin +
                Optional(topPowerValuesSection) +
                Optional(tradeCompanyRegionLine) +
                Optional(mostRecentTreasureShipPassageLine) +
-               stop).setResultsName("Nodes", True)
+               stop)).setResultsName("Nodes", True)
 
 tradeSection = begin + OneOrMore(nodeSection) + stop
