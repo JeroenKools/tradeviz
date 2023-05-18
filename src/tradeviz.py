@@ -58,9 +58,10 @@ BLACK = "#000"
 SMALL_FONT = ("Cambria", 12)
 BIG_FONT = ("Cambria", 18, "bold")
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 COMPATIBILITY_VERSION = version.Version("1.35.3")  # EU4 version
 APP_NAME = "EU4 Trade Visualizer"
+DEBUG_LEVEL = logging.DEBUG
 
 
 class UI:
@@ -81,13 +82,16 @@ class UI:
 
 def get_trade_data(trade_section_text, queue, previous_lines):
     """Extract the trade data from the selected save file"""
-    logging.basicConfig(filename="tradeviz_getTradeData.log", filemode="w", level=logging.DEBUG,
-                        format="[%(asctime)s] %(levelname)s: %(message)s",
-                        datefmt="%Y/%m/%d %H:%M:%S")
-    logging.info("Parsing %i chars" % len(trade_section_text))
+    logger = logging.getLogger("trade_process")
+    logger.setLevel(DEBUG_LEVEL)
+    handler = logging.FileHandler("tradeviz.log", "a", delay=True)
+    handler.setFormatter(logging.Formatter(fmt="[%(asctime)s] %(levelname)s: [%(name)s] %(message)s",
+                                           datefmt="%Y/%m/%d %H:%M:%S"))
+    logger.addHandler(handler)
+    logger.info("Parsing %i chars" % len(trade_section_text))
     t0 = time.time()
 
-    logging.debug("Parsing trade section...")
+    logger.debug("Parsing trade section...")
     result = TradeGrammar.tradeSection.parseString(trade_section_text)
     try:
         trade_section_dict = result.asDict()
@@ -109,8 +113,8 @@ def get_trade_data(trade_section_text, queue, previous_lines):
         util.show_error(e, "Can't read file! " + error_message)
         return
 
-    logging.info("Finished parsing save in %.3f seconds" % (time.time() - t0))
-    logging.debug("Processing parsed results")
+    logger.info("Finished parsing save in %.3f seconds" % (time.time() - t0))
+    logger.debug("Processing parsed results")
 
     max_current = 0
     max_local = 0
@@ -135,16 +139,17 @@ def get_trade_data(trade_section_text, queue, previous_lines):
         node_data[nodeDict[node_name]["quotedName"][0]] = node
 
     try:
-        logging.debug("Sevilla:\n\t%s" % node_data["sevilla"])
-        logging.debug("max current value: %s" % max_current)
-        logging.debug("max incoming value: %s" % max_incoming)
+        logger.debug("Sevilla:\n\t%s" % node_data["sevilla"])
+        logger.debug("max current value: %f" % max_current)
+        logger.debug("max incoming value: %f" % max_incoming)
     except KeyError:
-        logging.warning("Trade node Sevilla not found! Save file is either from a modded game or malformed!")
+        logger.warning("Trade node Sevilla not found! Save file is either from a modded game or malformed!")
 
     queue.put({"nodeData": node_data,
                "maxCurrent": max_current,
                "maxLocal": max_local,
                "maxIncoming": max_incoming})
+    handler.flush()
     sys.exit()
 
 
@@ -184,6 +189,7 @@ class TradeViz:
             self.ui.draw_img = self.ui.map_img.convert("RGB")
             self.map_thumb_size = self.ui.map_img.size
             self.map_render_size_ratio = self.map_thumb_size[0] / float(self.map_width)
+            logging.debug(f"Map thumb size: {self.map_thumb_size}, render size ratio:{self.map_render_size_ratio:.2f}")
             self.province_image = ImageTk.PhotoImage(self.ui.map_img)
         except Exception as e:
             logging.critical("Error preparing the world map!\n%s" % e)
@@ -488,15 +494,13 @@ class TradeViz:
                     psutil_process.nice(10)
                     psutil_process.ionice(psutil.IOPRIO_CLASS_IDLE)
 
+                logging.debug("Starting parsing subprocess")
                 trade_process.start()
                 wait_icon_angle = 0
-                i = 0
 
-                logging.debug("Entering while loop")
                 while trade_process.is_alive():
                     self.do_wait_icon(wait_icon_angle)
                     wait_icon_angle -= 12
-                    i += 1
                     time.sleep(0.05)
 
                 trade_data = output_queue.get()
@@ -1123,14 +1127,14 @@ class ParseError(Exception):
 
 
 if __name__ == "__main__":
-
-    debuglevel = logging.DEBUG
     if len(sys.argv) > 1:
         arg = sys.argv[1]
         if arg in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
-            debuglevel = eval("logging." + arg)
+            DEBUG_LEVEL = eval("logging." + arg)
 
-    logging.basicConfig(filename="tradeviz.log", filemode="w", level=debuglevel,
+    if os.path.exists("tradeviz.log"):
+        os.remove("tradeviz.log")
+    logging.basicConfig(filename="tradeviz.log", filemode="a", level=DEBUG_LEVEL,
                         format="[%(asctime)s] %(levelname)s: %(message)s",
                         datefmt="%Y/%m/%d %H:%M:%S")
 

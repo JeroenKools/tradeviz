@@ -5,9 +5,9 @@
 /dist/*.pkg
 /dist/*.pyz
 /dist/*.manifest
-/tradeviz.spec
 /*.log
 /src/*.log
 /dist/bin/*.log
-dist/tradeviz.cfg
+/dist/tradeviz.cfg
 /.idea
+/build
